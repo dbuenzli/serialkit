@@ -368,7 +368,7 @@ v}
     the surrounding brackets can be dropped.
 
     {b Note.} There's no form of quoting at the moment this means
-    key names can't contain, [, ], or be numbers. *)
+    key names can't contain, [\[], [\]], or be numbers. *)
 module Sexpl : sig
 
   (** {1:path Paths}
@@ -439,14 +439,14 @@ this-is-an_atom
 "this is a quoted atom, it can contain spaces ; and ()"
 
 "quoted atoms can be split ^
- across lines or contain Unicode esc^u\{0061\}pes"
+ across lines or contain Unicode esc^u{0061}pes"
 v}
 
     We define the syntax of s-expressions over a sequence of
     {{:http://unicode.org/glossary/#unicode_scalar_value}Unicode
-    characters} in which all US-ASCII {{!Char.Ascii.is_control}control
-    characters} except {{!whitespace}whitespace} are forbidden in
-    unescaped form.
+    characters} in which all US-ASCII control characters
+    (U+0000..U+001F and U+007F) except {{!whitespace}whitespace} are
+    forbidden in unescaped form.
 
     {2:sexp S-expressions and sequences thereof}
 
@@ -485,14 +485,14 @@ v}
     It can, via escapes, represent any sequence of Unicode characters,
     including control characters and U+0000. It cannot represent an
     arbitrary byte sequence except via a client-defined encoding
-    convention (e.g. Base64 or {{!string_bytes}hex encoding}).
+    convention (e.g. Base64 or hex encoding).
 
     Atoms can be specified either via an unquoted or a quoted form. In
     unquoted form the atom is written without delimiters. In quoted
-    form the atom is delimited by double quote ['\"'] (U+0022)
+    form the atom is delimited by double quote ['"'] (U+0022)
     characters, it is mandatory for atoms that contain
     {{!whitespace}whitespace}, parentheses ['('] [')'], semicolons
-    [';'], quotes ['\"'], carets ['^'] or characters that need to be
+    [';'], quotes ['"'], carets ['^'] or characters that need to be
     escaped.
 
 {v
@@ -508,19 +508,19 @@ v}
     empty string can only be represented in quoted form by {e ""}.
 
     In quoted form escapes are introduced by a caret ['^']. Double
-    quotes ['\"'] and carets ['^'] must always be escaped.
+    quotes ['"'] and carets ['^'] must always be escaped.
 
 {v
 "^^"             ; atom for ^
 "^n"             ; atom for line feed U+000A
-"^u\{0000\}"       ; atom for U+0000
-"^"^u\{1F42B\}^""  ; atom with a quote, U+1F42B and a quote
+"^u{0000}"       ; atom for U+0000
+"^"^u{1F42B}^""  ; atom with a quote, U+1F42B and a quote
 v}
 
     The following escape sequences are recognized:
     {ul
     {- ["^ "] (<U+005E,U+0020>) for space [' '] (U+0020)}
-    {- ["^\""] (<U+005E,U+0022>) for double quote ['\"'] (U+0022)
+    {- ["^\""] (<U+005E,U+0022>) for double quote ['"'] (U+0022)
        {b mandatory}}
     {- ["^^"] (<U+005E,U+005E>) for caret ['^'] (U+005E) {b mandatory}}
     {- ["^n"] (<U+005E,U+006E>) for line feed ['\n'] (U+000A)}
@@ -545,8 +545,8 @@ v}
   ^ " ; the atom "a "
 v}
 
-    The character ['^'] (U+005E) is used as an escape character rather
-    than the usual ['\\'] (U+005C) in order to make quoted Windows®
+    The character ^ (U+005E) is used as an escape character rather
+    than the usual \ (U+005C) in order to make quoted Windows®
     file paths decently readable and, not the least, utterly please
     DKM.
 

@@ -1,4 +1,4 @@
-{0 Serialk}
+{0 Serialk {%html: <span class="version">%%VERSION%%</span>%}}
 
 Serialk provides easy to use APIs to query, edit and (de)serialize
 data formats.  {{!Serialk_json}JSON text} and
