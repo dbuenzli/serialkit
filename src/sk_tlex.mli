@@ -8,13 +8,13 @@
 
     Open this module to use it defines only module in your scope. *)
 
-type fpath = string
-(** The type for file paths. *)
-
 (** Text locations. *)
 module Tloc : sig
 
   (** {1:tloc Text locations} *)
+
+  type fpath = string
+  (** The type for file paths. *)
 
   val no_file : fpath
   (** [no_file] is [Fpath.t "-"], a path used when no file is specified. *)
@@ -91,13 +91,13 @@ module Tdec : sig
   type t
   (** The type for UTF-8 text decoders. *)
 
-  val create : ?file:fpath -> string -> t
+  val create : ?file:Tloc.fpath -> string -> t
   (** [create ~file input] decodes [input] using [file]
       (defaults to {!Tloc.no_file}) for text location. *)
 
   (** {1:loc Locations} *)
 
-  val file : t -> fpath
+  val file : t -> Tloc.fpath
   (** [file d] is the input file. *)
 
   val pos : t -> Tloc.pos

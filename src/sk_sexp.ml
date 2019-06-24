@@ -78,25 +78,35 @@ let string_with_index_range ?(first = 0) ?last s =
 module Sexp = struct
   open Sk_tlex
 
-  (* S-expression *)
+  (* S-expressions *)
 
   type loc = Tloc.t
-  let loc_nil = Tloc.nil
-
   type t = [ `A of string * loc | `L of t list * loc ]
 
-  let err_exp_atom l = Format.asprintf "%a: list but expected atom" Tloc.pp l
-  let err_exp_list l = Format.asprintf "%a: atom but expected list" Tloc.pp l
+  let loc_nil = Tloc.nil
   let loc = function `A (_, loc) | `L (_, loc) -> loc
+
+  (* Constructors *)
+
   let atom a = `A (a, loc_nil)
   let list l = `L (l, loc_nil)
-  let to_atom = function `A (a, _) -> Ok a | `L (_, l) -> Error (err_exp_atom l)
-  let to_list = function `L (l, _) -> Ok l | `A (_, l) -> Error (err_exp_list l)
-  let get_atom = function
-  | `A (a, _) -> a | `L (_, l) -> invalid_arg (err_exp_atom l)
 
-  let get_list = function
-  | `L (l, _) -> l | `A (_, l) -> invalid_arg (err_exp_atom l)
+  (* Accessors *)
+
+  let kind = function `A _ -> "atom" | `L _ -> "list"
+  let err_exp exp fnd =
+    Format.asprintf "%a: %s but expected %s" Tloc.pp (loc fnd) (kind fnd) exp
+
+  let err_exp_atom = err_exp "atom"
+  let err_exp_list = err_exp "list"
+
+  let err e = Error e
+  let to_atom = function `A (a, _) -> Ok a | s -> err (err_exp_atom s)
+  let to_list = function `L (l, _) -> Ok l | s -> err (err_exp_list s)
+
+  let err = invalid_arg
+  let get_atom = function `A (a, _) -> a | s -> err (err_exp_atom s)
+  let get_list = function `L (l, _) -> l | s -> err (err_exp_list s)
 
   (* Decode *)
 

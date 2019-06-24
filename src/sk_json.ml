@@ -5,9 +5,11 @@
   ---------------------------------------------------------------------------*)
 
 module Json = struct
-  type loc = Sk_tlex.Tloc.t
-  let loc_nil = Sk_tlex.Tloc.nil
+  open Sk_tlex
 
+  (* JSON text *)
+
+  type loc = Tloc.t
   type mem = (string * loc) * t
   and t =
   [ `Null of loc
@@ -17,21 +19,52 @@ module Json = struct
   | `A of t list * loc
   | `O of mem list * loc ]
 
-  let kind_of_json = function
-  | `Null _ -> "null"
-  | `Bool _ -> "bool"
-  | `Float _ -> "float"
-  | `String _ -> "string"
-  | `A _ -> "array"
-  | `O _ -> "object"
+  let loc_nil = Tloc.nil
+  let loc = function
+  | `Null l | `Bool (_, l) | `Float (_, l) | `String (_, l) | `A (_, l)
+  | `O (_, l) -> l
+
+  (* Constructors *)
 
   let null = `Null loc_nil
   let bool b = `Bool (b, loc_nil)
   let float f = `Float (f, loc_nil)
   let string s = `String (s, loc_nil)
-  let a vs = `A (vs, loc_nil)
+  let array vs = `A (vs, loc_nil)
   let mem n v = ((n, loc_nil), v)
-  let o mems = `O (mems, loc_nil)
+  let obj mems = `O (mems, loc_nil)
+
+  (* Accessors *)
+
+  let kind = function
+  | `Null _ -> "null" | `Bool _ -> "bool" | `Float _ -> "float"
+  | `String _ -> "string" | `A _ -> "array" | `O _ -> "object"
+
+  let err_exp exp fnd =
+    Format.asprintf "%a: %s but expected %s" Tloc.pp (loc fnd) (kind fnd) exp
+
+  let err_exp_null = err_exp "null"
+  let err_exp_bool = err_exp "bool"
+  let err_exp_float = err_exp "number"
+  let err_exp_string = err_exp "string"
+  let err_exp_array = err_exp "array"
+  let err_exp_obj = err_exp "object"
+
+  let err e = Error e
+  let to_null = function `Null _ -> Ok () | j -> err (err_exp_null j)
+  let to_bool = function `Bool (b, _) -> Ok b | j -> err (err_exp_bool j)
+  let to_float = function `Float (f, _) -> Ok f | j -> err (err_exp_float j)
+  let to_string = function `String (s,_) -> Ok s | j -> err (err_exp_string j)
+  let to_array = function `A (vs, _) -> Ok vs | j -> err (err_exp_array j)
+  let to_obj = function `O (mems, _) -> Ok mems | j -> err (err_exp_obj j)
+
+  let err = invalid_arg
+  let get_null = function `Null _ -> () | j -> err (err_exp_null j)
+  let get_bool = function `Bool (b, _) -> b | j -> err (err_exp_bool j)
+  let get_float = function `Float (f, _) -> f | j -> err (err_exp_float j)
+  let get_string = function `String (s,_) -> s | j -> err (err_exp_string j)
+  let get_array = function `A (vs, _) -> vs | j -> err (err_exp_array j)
+  let get_obj = function `O (mems, _) -> mems | j -> err (err_exp_obj j)
 
   (* Decode *)
 
@@ -50,7 +83,6 @@ module Json = struct
   | false -> Char.code d.i.[d.pos]
   [@@ ocaml.inline]
 
-  let strf = Format.asprintf
   let err d fmt =
     Format.kasprintf (fun s -> raise_notrace (Failure s)) ("%d: " ^^ fmt) d.pos
 
@@ -228,7 +260,7 @@ module Json = struct
     skip_ws d;
     v
 
-  let of_string s =
+  let of_string ?(file = Sk_tlex.Tloc.no_file) s =
     try
       let d = decoder s in
       let v = parse_value d in
@@ -265,7 +297,8 @@ module Json = struct
           | '"' -> flush enc.b start i; adds "\\\"" enc; loop next next
           | '\\' -> flush enc.b start i; adds "\\\\" enc; loop next next
           | c when is_control c ->
-              flush enc.b start i; adds (strf "\\u%04X" (Char.code c)) enc;
+              flush enc.b start i;
+              adds (Format.asprintf "\\u%04X" (Char.code c)) enc;
               loop next next
           | c -> loop start next
       in
@@ -274,7 +307,7 @@ module Json = struct
     let null enc = adds "null" enc
     let bool b enc = adds (if b then "true" else "false") enc
     let int i enc = adds (string_of_int i) enc
-    let float f enc = adds (strf "%.16g" f) enc
+    let float f enc = adds (Format.asprintf "%.16g" f) enc
     let string s enc = addc '"' enc; adds_esc s enc; addc '"' enc
 
     let nosep enc = enc.sep <- false
@@ -324,6 +357,7 @@ module Json = struct
   end
 
   let to_string v = G.to_string (G.json v)
+  let pp ppf v = failwith "TODO"
 end
 
 module Jsong = Json.G
@@ -340,7 +374,7 @@ module Jsonq = struct
   let err p exp fnd =
     Format.kasprintf failwith
       "JSON query path %s: expected: %s found: %s"
-      (path_to_string p) exp (Json.kind_of_json fnd)
+      (path_to_string p) exp (Json.kind fnd)
 
   let err_miss_mem p =
     Format.kasprintf failwith

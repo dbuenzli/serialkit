@@ -31,6 +31,11 @@ module Json : sig
   | `O of mem list * loc ]
   (** The type for generic JSON text representations. *)
 
+  val loc : t -> loc
+  (** [loc j] is [j]'s input location. *)
+
+  (** {1:cons Constructors} *)
+
   val null : t
   (** [null] is [`Null loc_nil]. *)
 
@@ -43,26 +48,82 @@ module Json : sig
   val string : string -> t
   (** [string s] is [`String (s, loc_nil)]. *)
 
-  val a : t list -> t
+  val array : t list -> t
   (** [a vs] is [`A (vs, loc_nil)]. *)
 
   val mem : string -> t -> mem
   (** [mem n v] is [((n, loc_nil), v)]. *)
 
-  val o : mem list -> t
-  (** [o mems] is [`O (mems, loc_nil)]. *)
+  val obj : mem list -> t
+  (** [obj mems] is [`O (mems, loc_nil)]. *)
+
+  (** {1:access Accessors} *)
+
+  val to_null : t -> (unit, string) result
+  (** [to_null j] extracts a null from [j]. If [j] is not a null an
+      error with the location formatted according to {!Tloc.pp} is returned. *)
+
+  val to_bool : t -> (bool, string) result
+  (** [to_bool j] extracts a bool from [j]. If [j] is not a bool an
+      error with the location formatted according to {!Tloc.pp} is returned. *)
+
+  val to_float : t -> (float, string) result
+  (** [to_float j] extracts a float from [j]. If [j] is not a float an
+      error with the location formatted according to {!Tloc.pp} is returned. *)
+
+  val to_string : t -> (string, string) result
+  (** [to_string j] extracts a string from [j]. If [j] is not a string an
+      error with the location formatted according to {!Tloc.pp} is returned. *)
+
+  val to_array : t -> (t list, string) result
+  (** [to_array j] extracts a array from [j]. If [j] is not a array an
+      error with the location formatted according to {!Tloc.pp} is returned. *)
+
+  val to_obj : t -> (mem list, string) result
+  (** [to_obj j] extracts a array from [j]. If [j] is not a array an
+      error with the location formatted according to {!Tloc.pp} is returned. *)
+
+  val get_null : t -> unit
+  (** [get_null s] is like {!to_null} but raises {!Invalid_argument}
+      if [s] is not a null. *)
+
+  val get_bool : t -> bool
+  (** [get_bool s] is like {!to_bool} but raises {!Invalid_argument}
+      if [s] is not a bool. *)
+
+  val get_float : t -> float
+  (** [get_float s] is like {!to_float} but raises {!Invalid_argument}
+      if [s] is not a float. *)
+
+  val get_string : t -> string
+  (** [get_string s] is like {!to_string} but raises {!Invalid_argument}
+      if [s] is not a string. *)
+
+  val get_array : t -> t list
+  (** [get_array s] is like {!to_array} but raises {!Invalid_argument}
+      if [s] is not a array. *)
+
+  val get_obj : t -> mem list
+  (** [get_obj s] is like {!to_obj} but raises {!Invalid_argument}
+      if [s] is not a array. *)
+
+  (** {1:fmt Formatters} *)
+
+  val pp : Format.formatter -> t -> unit
+  (** [pp] formats JSON text. *)
 
   (** {1:codec Codec} *)
 
-  val of_string : string -> (t, string) result
+  val of_string : ?file:Sk_tlex.Tloc.fpath -> string -> (t, string) result
   (** [of_string s] parses JSON text from [s] according to
       {{:https://tools.ietf.org/html/rfc8259}RFC8259} with the following
       limitations:
       {ul
       {- Numbers are parsed with [string_of_float] which is not
-       compliant.}
-      {- Unicode escapes are left unparsed (this will not round trip
-       with {!to_string}).}} *)
+         compliant.}
+      {- FIXME simply require ocaml with Buffer.add_utf_8
+        Unicode escapes are left unparsed (this will not round trip
+         with {!to_string}).}} *)
 
   val to_string : t -> string
   (** [to_string v] is [v] as JSON text, encoded according to

@@ -29,30 +29,38 @@ module Sexp : sig
   (** The type for generic s-expression representations. Either an atom or
       a list. *)
 
+  val loc : t -> loc
+  (** [loc s] is [s]'s input location. *)
+
+  (** {1:cons Constructors} *)
+
   val atom : string -> t
   (** [atom a] is [`A (a, loc_nil)]. *)
 
   val list : t list -> t
   (** [list l] is [`L (l, loc_nil)]. *)
 
+  (** {1:access Accessors} *)
+
   val to_atom : t -> (string, string) result
-  (** [to_atom s] extracts an atom from [s]. If [s] is a list an
-      error with the location formatted according to {!Tloc.pp} is returned. *)
+  (** [to_atom s] extracts an atom from [s].  If [s] is a list an error
+      with the location formatted according to {!Tloc.pp} is
+      returned. *)
 
   val to_list : t -> (t list, string) result
-  (** [to_list s] extracts a list from [s]. If [s] is an atom an
-      error with the location formatted according to {!Tloc.pp} is returned. *)
+  (** [to_list s] extracts a list from [s]. If [s] is an atom an error
+      with the location formatted according to {!Tloc.pp} is
+      returned. *)
 
   val get_atom : t -> string
-  (** [get_atom s] is like {!to_atom} but raises {!Invalid_argument} if
-      [s] is not an atom. *)
+  (** [get_atom s] is like {!to_atom} but raises {!Invalid_argument}
+      if [s] is not an atom. *)
 
   val get_list : t -> t list
-  (** [get_atom s] is like {!to_list} but raises {!Invalid_argument} if
-      [s] is not an list. *)
+  (** [get_atom s] is like {!to_list} but raises {!Invalid_argument}
+      if [s] is not an list. *)
 
-  val loc : t -> loc
-  (** [loc s] is [s]'s input location. *)
+  (** {1:fmt Formatting} *)
 
   val pp : Format.formatter -> t -> unit
   (** [pp] formats an s-expression. *)
@@ -63,17 +71,18 @@ module Sexp : sig
 
   (** {1:codec Codec} *)
 
-  val of_string : ?file:Sk_tlex.fpath -> string -> (t, string) result
-  (** [of_string ?file s] parses from string [s] a {e sequence} of
-      s-expressions.  [file] is the file for locations, defaults to
-      [Fpath.v "-"]. The sequence is returned as a fake s-expression
-      list that spans the whole string; note that this list does not
-      exist syntactically in [s]. *)
+  val of_string : ?file:Sk_tlex.Tloc.fpath -> string -> (t, string) result
+  (** [of_string ?file s] parses a {e sequence} of s-expressions from
+      [s]. [file] is the file for locations, defaults to ["-"]. The
+      sequence is returned as a fake s-expression list that spans the
+      whole string; note that this list does not exist syntactically
+      in [s]. *)
 
   val to_string : t -> string
   (** [to_string s] encodes [s] to a sequence of s-expressions. If [s]
       is an s-expression list this wrapping list is not syntactically
-      represented in the output (see also {!of_string}). *)
+      represented in the output (see also {!of_string}), use
+      [to_string (list [l])] if you want to output [l] as a list. *)
 end
 
 (** S-expression generation. *)

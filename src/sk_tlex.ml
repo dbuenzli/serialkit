@@ -50,13 +50,11 @@ module Utf_8 = struct
   |]
 end
 
-type fpath = string
-let pp_path = Format.pp_print_string
-
 module Tloc = struct
+  type fpath = string
+  let pp_path = Format.pp_print_string
   type pos = int
   type line = int
-
   type t =
     { file : fpath;
       byte_s : pos; byte_e : pos;
@@ -138,7 +136,7 @@ module Tdec = struct
   (* Decoders *)
 
   type t =
-    { file : fpath; i : string; tok : Buffer.t;
+    { file : Tloc.fpath; i : string; tok : Buffer.t;
       mutable pos : int; mutable line_pos : int; mutable line : int }
 
   let create ?(file = Tloc.no_file) i =
