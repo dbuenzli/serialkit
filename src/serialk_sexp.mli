@@ -12,14 +12,12 @@
 
 (** {1:sexp S-expressions} *)
 
-(** S-expression definitions and codec.
-
-    {b Warning.} The module assumes strings are UTF-8 encoded. *)
+(** S-expression definitions and codec. *)
 module Sexp : sig
 
   (** {1:sexp S-expressions} *)
 
-  type loc = Sk_tlex.Tloc.t
+  type loc = Serialk_tlex.Tloc.t
   (** The type for text locations. *)
 
   val loc_nil : loc
@@ -63,26 +61,37 @@ module Sexp : sig
   (** {1:fmt Formatting} *)
 
   val pp : Format.formatter -> t -> unit
-  (** [pp] formats an s-expression. *)
+  (** [pp] formats an s-expression.
+
+      {b Warning.} Assumes all OCaml strings in the formatted value are
+      UTF-8 encoded. *)
 
   val pp_seq : Format.formatter -> t -> unit
   (** [pp_seq] formats an s-expression but if it is a list the
-      outer list separators are not formatted in the output. *)
+      outer list separators are not formatted in the output.
+
+      {b Warning.} Assumes all OCaml strings in the formatted value are
+      UTF-8 encoded. *)
 
   (** {1:codec Codec} *)
 
-  val of_string : ?file:Sk_tlex.Tloc.fpath -> string -> (t, string) result
+  val of_string : ?file:Serialk_tlex.Tloc.fpath -> string -> (t, string) result
   (** [of_string ?file s] parses a {e sequence} of s-expressions from
       [s]. [file] is the file for locations, defaults to ["-"]. The
       sequence is returned as a fake s-expression list that spans the
       whole string; note that this list does not exist syntactically
-      in [s]. *)
+      in [s].
+
+      {b Note.} All OCaml strings returned by this function are UTF-8
+      encoded. *)
 
   val to_string : t -> string
   (** [to_string s] encodes [s] to a sequence of s-expressions. If [s]
       is an s-expression list this wrapping list is not syntactically
       represented in the output (see also {!of_string}), use
-      [to_string (list [l])] if you want to output [l] as a list. *)
+      [to_string (list [l])] if you want to output [l] as a list.
+
+      {b Warning.} Assumes all OCaml strings in [s] are UTF-8 encoded. *)
 end
 
 (** S-expression generation. *)
@@ -178,7 +187,7 @@ module Sexpq : sig
 
   val fail : string -> 'a t
   (** [fail msg] is a query that fails on any s-expression with
-      message [msg]. Do not include position information in [msg]: this
+      message [msg]. Do not include position information in [msg], this
       is automatically handled by the module. *)
 
   val failf : ('a, Format.formatter, unit, 'b t) format4 -> 'a
@@ -226,6 +235,11 @@ module Sexpq : sig
   val atom : string t
   (** [atom] queries an atom as a string. *)
 
+  val parsed_atom : kind:string -> (string -> ('a, string) result) -> 'a t
+  (** [parsed_atom ~kind p] queries and atom and parses it with [p]. In
+      case of [Error m] fails with message [m]. [kind] is the kind
+      of value parsed, used for the error in case a list is found. *)
+
   val enum : kind:string ->  Set.Make(String).t -> string t
   (** [enum ~kind ss] queries an atom for one of the element of [ss]
       and fails otherwise. [kind] is for the kind of elements in [ss],
@@ -235,11 +249,6 @@ module Sexpq : sig
   (** [enum_map ~kind sm] queries an atom for it's map in [sm] and
       fails if the atom is not bound in [sm]. [kind] is for the kind
       of elements in [sm], it used for error reporting. *)
-
-  val parsed_atom : kind:string -> (string -> ('a, string) result) -> 'a t
-  (** [parsed_atom ~kind p] queries and atom and parses it with [p]. In
-      case of [Error m] fails with message [m]. [kind] is the kind
-      of value parsed, used for the error in case a list is found. *)
 
   val bool : bool t
   (** [bool] queries an atom for one of [true] or [false]. *)

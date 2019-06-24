@@ -143,6 +143,29 @@ module Tdec : sig
   (** [err_here d] is like {!err_to_here} with the start position
       at the current decoding position. *)
 
+  (** {2:err_msg Error message helpers} *)
+
+  val err_suggest : ?dist:int -> string list -> string -> string list
+  (** [err_suggest ~dist candidates s] are the elements of [candidates]
+      whose {{!edit_distance}edit distance} is the smallest to [s] and
+      at most at a distance of [dist] of [s] (defaults to [2]). If
+      multiple results are returned the order of [candidates] is
+      preserved. *)
+
+  val err_did_you_mean :
+    ?pre:(Format.formatter -> unit -> unit) ->
+    ?post:(Format.formatter -> unit -> unit) ->
+    kind:string -> (Format.formatter -> 'a -> unit) ->
+    Format.formatter -> 'a * 'a list -> unit
+  (** [did_you_mean ~pre kind ~post pp_v] formats a faulty value [v] of
+      kind [kind] and a list of [hints] that [v] could have been
+      mistaken for.
+
+      [pre] defaults to [unit "Unknown"], [post] to {!nop} they surround
+      the faulty value before the "did you mean" part as follows ["%a %s
+      %a%a." pre () kind pp_v v post ()]. If [hints] is empty no "did
+      you mean" part is printed. *)
+
   (** {1:dec Decoding} *)
 
   val eoi : t -> bool

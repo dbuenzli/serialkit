@@ -1,7 +1,33 @@
-description = "Satisfies these serial needs"
+description = "Satisfies OCaml serialization impulsions"
 version = "%%VERSION_NUM%%"
 requires = ""
-archive(byte) = "serialk.cma"
-archive(native) = "serialk.cmxa"
-plugin(byte) = "serialk.cma"
-plugin(native) = "serialk.cmxs"
+
+package "tlex" (
+  description = "Text lexing support"
+  version = "%%VERSION_NUM%%"
+  requires = ""
+  archive(byte) = "serialk_tlex.cma"
+  archive(native) = "serialk_tlex.cmxa"
+  plugin(byte) = "serialk_tlex.cma"
+  plugin(native) = "serialk_tlex.cmxs"
+)
+
+package "json" (
+  description = "JSON support"
+  version = "%%VERSION_NUM%%"
+  requires = "serialk.tlex"
+  archive(byte) = "serialk_json.cma"
+  archive(native) = "serialk_json.cmxa"
+  plugin(byte) = "serialk_json.cma"
+  plugin(native) = "serialk_json.cmxs"
+)
+
+package "sexp" (
+  description = "JSON support"
+  version = "%%VERSION_NUM%%"
+  requires = "serialk.tlex"
+  archive(byte) = "serialk_sexp.cma"
+  archive(native) = "serialk_sexp.cmxa"
+  plugin(byte) = "serialk_sexp.cma"
+  plugin(native) = "serialk_sexp.cmxs"
+)

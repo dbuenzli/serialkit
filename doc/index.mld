@@ -1,0 +1,18 @@
+{0 Serialk}
+
+Serialk provides easy to use APIs to query, edit and (de)serialize
+data formats.  {{!Serialk_json}JSON text} and
+{{!Serialk_sexp}s-expressions} are supported for now.
+
+{b Warning.} Serialk works on complete, in-memory, representations of the
+data. If you need streaming support pass your way. Besides at the
+moment IO is performed directly from and to OCaml strings but that
+constraint may be lifted in the future.
+
+{1:api API}
+
+{!modules:
+Serialk_json
+Serialk_sexp
+Serialk_tlex
+}

@@ -5,7 +5,7 @@
   ---------------------------------------------------------------------------*)
 
 module Json = struct
-  open Sk_tlex
+  open Serialk_tlex
 
   (* JSON text *)
 
@@ -260,7 +260,7 @@ module Json = struct
     skip_ws d;
     v
 
-  let of_string ?(file = Sk_tlex.Tloc.no_file) s =
+  let of_string ?(file = Tloc.no_file) s =
     try
       let d = decoder s in
       let v = parse_value d in
@@ -315,9 +315,9 @@ module Json = struct
     let set_sep sep enc = enc.sep <- sep
     let if_sep enc = if not enc.sep then enc.sep <- true else addc ',' enc
 
-    type arr = t
-    let arr enc = ()
-    let arr_end els enc =
+    type array = t
+    let array enc = ()
+    let array_end els enc =
       let sep = sep enc in
       addc '[' enc; nosep enc; els enc; addc ']' enc; set_sep sep enc
 
@@ -336,7 +336,8 @@ module Json = struct
     (* Derived generators *)
 
     let strf fmt = Format.kasprintf string fmt
-    let list elv l = arr_end (List.fold_left (fun a v -> el (elv v) a) arr l)
+    let list elv l =
+      array_end (List.fold_left (fun a v -> el (elv v) a) array l)
 
     let option some o = match o with None -> null | Some v -> some v
     let rec json = function
@@ -344,7 +345,8 @@ module Json = struct
     | `Bool (b, _) -> bool b
     | `Float (f, _) -> float f
     | `String (s, _) -> string s
-    | `A (a, _) -> arr_end @@ List.fold_left (fun a e -> el (json e) a) arr a
+    | `A (a, _) ->
+        array_end @@ List.fold_left (fun a e -> el (json e) a) array a
     | `O (o, _) ->
         obj_end @@ List.fold_left (fun o ((m, _), v) -> mem m (json v) o) obj o
 
@@ -362,80 +364,205 @@ end
 
 module Jsong = Json.G
 module Jsonq = struct
-  type path = [`A | `O of string] list (* in reverse order *)
-  type 'a t = path -> Json.t -> 'a
+  open Serialk_tlex
 
-  (* Errors *)
+  module Sset = Set.Make (String)
+  module Smap = Map.Make (String)
+
+  let pp_quote ppf s = Format.fprintf ppf "'%s'" s
+  let pp_mem = pp_quote
+
+  type path = (* Paths in JSON values, array and object member traversals. *)
+    ([`A | `O of string] * Json.loc) list (* in reverse order *)
 
   let path_to_string p =
     let seg = function `A -> "[]" | `O n -> "." ^ n in
     String.concat "" (List.rev_map seg p)
 
-  let err p exp fnd =
-    Format.kasprintf failwith
-      "JSON query path %s: expected: %s found: %s"
-      (path_to_string p) exp (Json.kind fnd)
+  let path_to_trace ?(pp_mem = pp_mem) p =
+    let seg = function
+    | `A, l -> Format.asprintf "%a: in array" Tloc.pp l
+    | `O m, l -> Format.asprintf "%a: in key %a" Tloc.pp l pp_mem m
+    in
+    String.concat "\n" (List.map seg p)
 
-  let err_miss_mem p =
-    Format.kasprintf failwith
-      "JSON query path %s: no such member" (path_to_string p)
+  (* Errors *)
+
+  exception Err of path * Tloc.t * string
+
+  let err p l msg = raise_notrace (Err (p, l, msg))
+  let errf p l fmt = Format.kasprintf (err p l) fmt
+  let err_exp exp p fnd =
+    errf p (Json.loc fnd) "found %s but expected %s" (Json.kind fnd) exp
+
+  let err_exp_null = err_exp "null"
+  let err_exp_bool = err_exp "bool"
+  let err_exp_float = err_exp "number"
+  let err_exp_string = err_exp "string"
+  let err_exp_array = err_exp "array"
+  let err_exp_obj = err_exp "object"
+  let err_empty_array p l = errf p l "unexpected empty array"
+  let err_miss_mem p l n = errf p l "member %a unbound in object" pp_mem n
+  let err_to_string ?pp_mem p loc msg =
+    let pp_lines ppf s =
+      Format.fprintf ppf "@[<v>%a@]"
+        (Format.pp_print_list Format.pp_print_string)
+        (String.split_on_char '\n' s)
+    in
+    match p with
+    | [] -> Format.asprintf "%a:@\n%a" Tloc.pp loc pp_lines msg
+    | p ->
+        Format.asprintf "%a:@\n%a@\n  @[%a@]"
+          Tloc.pp loc pp_lines msg pp_lines (path_to_trace p)
 
   (* Queries *)
 
-  let json p j = j
-  let null p = function `Null _ -> () | j -> err p "null" j
+  type 'a t = path -> Json.t -> 'a
+
+  let query q s = try Ok (q [] s) with
+  | Err (p, l, m) -> Error (err_to_string p l m)
+
+  (* Succeeding and failing queries *)
+
+  let succeed v p s = v
+  let fail msg p s = err p (Json.loc s) msg
+  let failf fmt = Format.kasprintf fail fmt
+
+  (* Query combinatores *)
+
+  let app fq q p s = fq p s (q p s)
+  let ( $ ) = app
+  let bind q f p s = f (q p s) p s
+  let map f q p s = f (q p s)
+  let some q p s = Some (q p s)
+
+  (* JSON queries *)
+
+  let fold ~null ~bool ~float ~string ~array ~obj p = function
+  | `Null _ as j -> null p j
+  | `Bool _ as j -> bool p j
+  | `Float _ as j -> float p j
+  | `String _ as j -> string p j
+  | `A _ as j -> array p j
+  | `O _ as j -> obj p j
+
+  let json p s = s
+  let loc p s = Json.loc s
+  let with_loc q p s = (q p s), Json.loc s
+
+  (* Nulls *)
+
+  let is_null p = function `Null _ -> true | j -> false
+  let null p = function `Null _ -> () | j -> err_exp_null p j
   let nullable q p = function `Null _ -> None | j -> Some (q p j)
-  let bool p = function `Bool (b, _) -> b | j -> err p "bool" j
-  let int p = function `Float (f, _) ->
-    truncate f (* XXX *) | j -> err p "int" j
 
-  let float p = function `Float (f, _) -> f | j -> err p "float" j
-  let string p = function `String (s, _) -> s | j -> err p "string" j
-  let array qe p = function
-  | `A (es, _) -> List.(rev @@ rev_map (qe (`A :: p)) es)
-  | j -> err p "array" j
+  (* Atomic values *)
 
-  let rec find_name n = function
+  let bool p = function `Bool (b, _) -> b | j -> err_exp_bool p j
+  let float p = function `Float (f, _) -> f | j -> err_exp_float p j
+  let string p = function `String (s, _) -> s | j -> err_exp_string p j
+
+  let parsed_string ~kind parse p = function
+  | `String (s, _) as j ->
+      (match parse s with Ok v -> v | Error m -> fail m p j)
+  | j -> err_exp kind p j
+
+  let enum ~kind ss p = function
+  | `String (s, _) when Sset.mem s ss -> s
+  | `String (s, l) ->
+      let ss = Sset.elements ss in
+      let did_you_mean = Tdec.err_did_you_mean ~kind pp_quote in
+      let suggs = match Tdec.err_suggest ss s with [] -> ss | ss -> ss in
+      errf p l "%a" did_you_mean (s, suggs)
+  | j -> err_exp kind p j
+
+  let enum_map ~kind sm p = function
+  | `String (s, l) ->
+      begin match Smap.find s sm with
+      | v -> v
+      | exception Not_found ->
+          let ss = Smap.fold (fun k _ acc -> k :: acc) sm [] in
+          let did_you_mean = Tdec.err_did_you_mean ~kind pp_quote in
+          let suggs = match Tdec.err_suggest ss s with [] -> ss | ss -> ss in
+          errf p l "%a" did_you_mean (s, suggs)
+      end
+  | j -> err_exp kind p j
+
+  (* Array *)
+
+  let is_empty_array p = function `A (a, _) -> a = [] | j -> err_exp_array p j
+  let hd q p = function
+  | `A ([], l) -> err_empty_array p l
+  | `A (v :: _, l) -> q ((`A, l) :: p) v
+  | j -> err_exp_array p j
+
+  let tl q p = function
+  | `A ([], l) -> err_empty_array p l
+  | `A (_ :: [], l) -> q p (`A ([], Tloc.to_end l))
+  | `A (_ :: (v :: _ as a), l) ->
+      let l = Tloc.with_start (Tloc.to_start (Json.loc v)) l in
+      q p (`A (a, l))
+  | j -> err_exp_array p j
+
+  let nth n q p = function
+  | `A (vs, l) ->
+      let p = (`A, l) :: p in
+      let k, vs = if n < 0 then - n - 1, List.rev vs else n, vs in
+      let rec loop k = function
+      | v :: vs when k = 0 -> q p v
+      | _ :: vs -> loop (k - 1) vs
+      | [] -> errf p l "%d: no such index in array" n
+      in
+      loop k vs
+  | j -> err_exp_array p j
+
+  let fold_array f q acc p = function
+  | `A (vs, l) ->
+      let p = (`A, l) :: p in
+      let add p acc v = f (q p v) acc in
+      List.fold_left (add p) acc vs
+  | j -> err_exp_array p j
+
+  let array qv = map List.rev (fold_array (fun v acc -> v :: acc) qv [])
+
+  (* Objects *)
+
+  let rec mem_find n = function
   | ((n', _), j) :: ms when String.equal n' n -> Some j
-  | _  :: ms -> find_name n ms
+  | _  :: ms -> mem_find n ms
   | [] -> None
 
-  let mem name qmem qobj p = function
-  | `O (ms, _) as obj ->
-      let pm = `O name :: p in
-      begin match find_name name ms with
-      | None -> err_miss_mem pm
-      | Some j -> qobj p obj (qmem pm j)
+  let mem : string -> 'a t -> 'a t = fun n q p -> function
+  | `O (ms, l) ->
+      begin match mem_find n ms with
+      | None -> err_miss_mem p l n
+      | Some j -> q  ((`O n, l) :: p) j
       end
-  | j -> err p "object" j
+  | j -> err_exp_obj p j
 
-  let mem_opt name qmem qobj p = function
-  | `O (ms, _) as obj ->
-      let pm = `O name :: p in
-      begin match find_name name ms with
-      | None -> qobj p obj None
-      | Some j -> qobj p obj (Some (qmem pm j))
+  let opt_mem n q ~absent p = function
+  | `O (ms, l) ->
+      begin match mem_find n ms with
+      | None -> absent
+      | Some j -> q ((`O n, l) :: p) j
       end
-  | j -> err p "object" j
+  | j -> err_exp_obj p j
 
-  let obj v p = function
-  | `O _ -> v
-  | j -> err p "object" j
-
-  let get v = v
-  let sel name qmem p = function (* optimize obj get |> mem name qmem *)
-  | `O (ms, _) ->
-      let pm = `O name :: p in
-      begin match find_name name ms with
-      | None -> err_miss_mem pm
-      | Some j -> qmem pm j
-      end
-  | j -> err p "object" j
-
-  let query q j = try Ok (q [] j) with Failure e -> Error e
+  let mem_dom ~validate p = function
+  | `O (ms, l) ->
+      let add_mem = match validate with
+      | None -> fun acc ((n, _), _) -> Sset.add n acc
+      | Some dom ->
+          fun acc ((n, _), _) -> match Sset.mem n dom with
+          | true -> Sset.add n acc
+          | false ->
+              let ns = Sset.elements dom in
+              let did_you_mean = Tdec.err_did_you_mean ~kind:"member" pp_mem in
+              errf p l "%a" did_you_mean (n, Tdec.err_suggest ns n)
+      in
+      List.fold_left add_mem Sset.empty ms
+  | j -> err_exp_obj p j
 end
-
-
 
 (*---------------------------------------------------------------------------
    Copyright (c) 2016 The b0 programmers

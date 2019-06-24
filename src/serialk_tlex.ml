@@ -4,51 +4,67 @@
    %%NAME%% %%VERSION%%
   ---------------------------------------------------------------------------*)
 
-module Utf_8 = struct
-  type case =
-  | L1 | L2 | L3_E0 | L3_E1_EC_or_EE_EF | L3_ED | L4_F0 | L4_F1_F3 | L4_F4 | E
+(* Error message helpers. *)
 
-  let case =
-(*
-  (* See https://tools.ietf.org/html/rfc3629#section-4 *)
-  Printf.printf "[|";
-  for i = 0 to 255 do
-    if i mod 16 = 0 then Printf.printf "\n";
-    if 0x00 <= i && i <= 0x7F then Printf.printf "L1; " else
-    if 0xC2 <= i && i <= 0xDF then Printf.printf "L2; " else
-    if 0xE0 = i then Printf.printf "L3_E0; " else
-    if 0xE1 <= i && i <= 0xEC || 0xEE <= i && i <= 0xEF
-    then Printf.printf "L3_E1_EC_or_EE_EF; " else
-    if 0xED = i then Printf.printf "L3_ED;" else
-    if 0xF0 = i then Printf.printf "L4_F0; " else
-    if 0xF1 <= i && i <= 0xF3 then Printf.printf "L4_F1_F3; " else
-    if 0xF4 = i then Printf.printf "L4_F4; " else
-    Printf.printf "E; "
-  done;
-  Printf.printf "\n|]"
-*)
-  [|
-    L1; L1; L1; L1; L1; L1; L1; L1; L1; L1; L1; L1; L1; L1; L1; L1;
-    L1; L1; L1; L1; L1; L1; L1; L1; L1; L1; L1; L1; L1; L1; L1; L1;
-    L1; L1; L1; L1; L1; L1; L1; L1; L1; L1; L1; L1; L1; L1; L1; L1;
-    L1; L1; L1; L1; L1; L1; L1; L1; L1; L1; L1; L1; L1; L1; L1; L1;
-    L1; L1; L1; L1; L1; L1; L1; L1; L1; L1; L1; L1; L1; L1; L1; L1;
-    L1; L1; L1; L1; L1; L1; L1; L1; L1; L1; L1; L1; L1; L1; L1; L1;
-    L1; L1; L1; L1; L1; L1; L1; L1; L1; L1; L1; L1; L1; L1; L1; L1;
-    L1; L1; L1; L1; L1; L1; L1; L1; L1; L1; L1; L1; L1; L1; L1; L1;
-    E; E; E; E; E; E; E; E; E; E; E; E; E; E; E; E;
-    E; E; E; E; E; E; E; E; E; E; E; E; E; E; E; E;
-    E; E; E; E; E; E; E; E; E; E; E; E; E; E; E; E;
-    E; E; E; E; E; E; E; E; E; E; E; E; E; E; E; E;
-    E; E; L2; L2; L2; L2; L2; L2; L2; L2; L2; L2; L2; L2; L2; L2;
-    L2; L2; L2; L2; L2; L2; L2; L2; L2; L2; L2; L2; L2; L2; L2; L2;
-    L3_E0; L3_E1_EC_or_EE_EF; L3_E1_EC_or_EE_EF; L3_E1_EC_or_EE_EF;
-    L3_E1_EC_or_EE_EF; L3_E1_EC_or_EE_EF; L3_E1_EC_or_EE_EF; L3_E1_EC_or_EE_EF;
-    L3_E1_EC_or_EE_EF; L3_E1_EC_or_EE_EF; L3_E1_EC_or_EE_EF; L3_E1_EC_or_EE_EF;
-    L3_E1_EC_or_EE_EF; L3_ED;L3_E1_EC_or_EE_EF; L3_E1_EC_or_EE_EF;
-    L4_F0; L4_F1_F3; L4_F1_F3; L4_F1_F3; L4_F4; E; E; E; E; E; E; E; E; E; E; E;
-  |]
+module Err_msg = struct
+  let pp_nop _ () = ()
+  let pp_any fmt ppf _ = Format.fprintf ppf fmt
+  let pp_one_of ?(empty = pp_nop) pp_v ppf = function
+  | [] -> empty ppf ()
+  | [v] -> pp_v ppf v
+  | [v0; v1] -> Format.fprintf ppf "@[either %a or@ %a@]" pp_v v0 pp_v v1
+  | _ :: _ as vs ->
+      let rec loop ppf = function
+      | [v] -> Format.fprintf ppf "or@ %a" pp_v v
+      | v :: vs -> Format.fprintf ppf "%a,@ " pp_v v; loop ppf vs
+      | [] -> assert false
+      in
+      Format.fprintf ppf "@[one@ of@ %a@]" loop vs
+
+  let pp_did_you_mean
+      ?(pre = pp_any "Unknown") ?(post = pp_nop) ~kind pp_v ppf (v, hints)
+    =
+    match hints with
+    | [] -> Format.fprintf ppf "@[%a %s %a%a.@]" pre () kind pp_v v post ()
+    | hints ->
+        Format.fprintf ppf "@[%a %s %a%a.@ Did you mean %a ?@]"
+          pre () kind pp_v v post () (pp_one_of pp_v) hints
+
+  let edit_distance s0 s1 =
+    (* As found here http://rosettacode.org/wiki/Levenshtein_distance#OCaml *)
+    let minimum a b c = min a (min b c) in
+    let m = String.length s0 in
+    let n = String.length s1 in
+    (* for all i and j, d.(i).(j) will hold the Levenshtein distance between
+       the first i characters of s and the first j characters of t *)
+    let d = Array.make_matrix (m+1) (n+1) 0 in
+    for i = 0 to m do d.(i).(0) <- i done;
+    for j = 0 to n do d.(0).(j) <- j done;
+    for j = 1 to n do
+      for i = 1 to m do
+        if s0.[i-1] = s1.[j-1]
+        then d.(i).(j) <- d.(i-1).(j-1)  (* no operation required *)
+        else
+        d.(i).(j) <- minimum
+            (d.(i-1).(j) + 1)   (* a deletion *)
+            (d.(i).(j-1) + 1)   (* an insertion *)
+            (d.(i-1).(j-1) + 1) (* a substitution *)
+      done;
+    done;
+    d.(m).(n)
+
+  let suggest ?(dist = 2) candidates s =
+    let add (min, acc) name =
+      let d = edit_distance s name in
+      if d = min then min, (name :: acc) else
+      if d < min then d, [name] else
+      min, acc
+    in
+    let d, suggs = List.fold_left add (max_int, []) candidates in
+    if d <= dist (* suggest only if not too far *) then List.rev suggs else []
 end
+
+(* Text locations *)
 
 module Tloc = struct
   type fpath = string
@@ -131,6 +147,56 @@ module Tloc = struct
   let pp = pp_gnu
 end
 
+(* UTF-8 decoding table. *)
+
+module Utf_8 = struct
+  type case =
+  | L1 | L2 | L3_E0 | L3_E1_EC_or_EE_EF | L3_ED | L4_F0 | L4_F1_F3 | L4_F4 | E
+
+  let case =
+(*
+  (* See https://tools.ietf.org/html/rfc3629#section-4 *)
+  Printf.printf "[|";
+  for i = 0 to 255 do
+    if i mod 16 = 0 then Printf.printf "\n";
+    if 0x00 <= i && i <= 0x7F then Printf.printf "L1; " else
+    if 0xC2 <= i && i <= 0xDF then Printf.printf "L2; " else
+    if 0xE0 = i then Printf.printf "L3_E0; " else
+    if 0xE1 <= i && i <= 0xEC || 0xEE <= i && i <= 0xEF
+    then Printf.printf "L3_E1_EC_or_EE_EF; " else
+    if 0xED = i then Printf.printf "L3_ED;" else
+    if 0xF0 = i then Printf.printf "L4_F0; " else
+    if 0xF1 <= i && i <= 0xF3 then Printf.printf "L4_F1_F3; " else
+    if 0xF4 = i then Printf.printf "L4_F4; " else
+    Printf.printf "E; "
+  done;
+  Printf.printf "\n|]"
+*)
+  [|
+    L1; L1; L1; L1; L1; L1; L1; L1; L1; L1; L1; L1; L1; L1; L1; L1;
+    L1; L1; L1; L1; L1; L1; L1; L1; L1; L1; L1; L1; L1; L1; L1; L1;
+    L1; L1; L1; L1; L1; L1; L1; L1; L1; L1; L1; L1; L1; L1; L1; L1;
+    L1; L1; L1; L1; L1; L1; L1; L1; L1; L1; L1; L1; L1; L1; L1; L1;
+    L1; L1; L1; L1; L1; L1; L1; L1; L1; L1; L1; L1; L1; L1; L1; L1;
+    L1; L1; L1; L1; L1; L1; L1; L1; L1; L1; L1; L1; L1; L1; L1; L1;
+    L1; L1; L1; L1; L1; L1; L1; L1; L1; L1; L1; L1; L1; L1; L1; L1;
+    L1; L1; L1; L1; L1; L1; L1; L1; L1; L1; L1; L1; L1; L1; L1; L1;
+    E; E; E; E; E; E; E; E; E; E; E; E; E; E; E; E;
+    E; E; E; E; E; E; E; E; E; E; E; E; E; E; E; E;
+    E; E; E; E; E; E; E; E; E; E; E; E; E; E; E; E;
+    E; E; E; E; E; E; E; E; E; E; E; E; E; E; E; E;
+    E; E; L2; L2; L2; L2; L2; L2; L2; L2; L2; L2; L2; L2; L2; L2;
+    L2; L2; L2; L2; L2; L2; L2; L2; L2; L2; L2; L2; L2; L2; L2; L2;
+    L3_E0; L3_E1_EC_or_EE_EF; L3_E1_EC_or_EE_EF; L3_E1_EC_or_EE_EF;
+    L3_E1_EC_or_EE_EF; L3_E1_EC_or_EE_EF; L3_E1_EC_or_EE_EF; L3_E1_EC_or_EE_EF;
+    L3_E1_EC_or_EE_EF; L3_E1_EC_or_EE_EF; L3_E1_EC_or_EE_EF; L3_E1_EC_or_EE_EF;
+    L3_E1_EC_or_EE_EF; L3_ED;L3_E1_EC_or_EE_EF; L3_E1_EC_or_EE_EF;
+    L4_F0; L4_F1_F3; L4_F1_F3; L4_F1_F3; L4_F4; E; E; E; E; E; E; E; E; E; E; E;
+  |]
+end
+
+(* UTF-8 text decoder *)
+
 module Tdec = struct
 
   (* Decoders *)
@@ -165,6 +231,8 @@ module Tdec = struct
     Format.kasprintf (err (loc_to_here d ~byte_s ~line_s)) fmt
 
   let err_here d fmt = Format.kasprintf (err (loc_here d)) fmt
+  let err_suggest = Err_msg.suggest
+  let err_did_you_mean = Err_msg.pp_did_you_mean
 
   (* Lexing *)
 

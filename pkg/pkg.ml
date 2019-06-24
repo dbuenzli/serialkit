@@ -5,7 +5,7 @@ open Topkg
 
 let () =
   Pkg.describe "serialk" @@ fun c ->
-  Ok [ Pkg.mllib "src/sk_tlex.mllib";
-       Pkg.mllib "src/sk_json.mllib";
-       Pkg.mllib "src/sk_sexp.mllib";
+  Ok [ Pkg.mllib "src/serialk_tlex.mllib";
+       Pkg.mllib "src/serialk_json.mllib";
+       Pkg.mllib "src/serialk_sexp.mllib";
        Pkg.test "test/test"; ]

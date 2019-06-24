@@ -4,66 +4,6 @@
    %%NAME%% %%VERSION%%
   ---------------------------------------------------------------------------*)
 
-(* Needed for the quick and dirty port. Maybe add that
-   to tlex. *)
-
-let pp_nop _ () = ()
-let pp_any fmt ppf _ = Format.fprintf ppf fmt
-let pp_quote ppf s = Format.fprintf ppf "'%s'" s
-let pp_one_of ?(empty = pp_nop) pp_v ppf = function
-| [] -> empty ppf ()
-| [v] -> pp_v ppf v
-| [v0; v1] -> Format.fprintf ppf "@[either %a or@ %a@]" pp_v v0 pp_v v1
-| _ :: _ as vs ->
-    let rec loop ppf = function
-    | [v] -> Format.fprintf ppf "or@ %a" pp_v v
-    | v :: vs -> Format.fprintf ppf "%a,@ " pp_v v; loop ppf vs
-    | [] -> assert false
-    in
-    Format.fprintf ppf "@[one@ of@ %a@]" loop vs
-
-let pp_did_you_mean
-    ?(pre = pp_any "Unknown") ?(post = pp_nop) ~kind pp_v ppf (v, hints)
-  =
-  match hints with
-  | [] -> Format.fprintf ppf "@[%a %s %a%a.@]" pre () kind pp_v v post ()
-  | hints ->
-      Format.fprintf ppf "@[%a %s %a%a.@ Did you mean %a ?@]"
-        pre () kind pp_v v post () (pp_one_of pp_v) hints
-
-let edit_distance s0 s1 =
-  (* As found here http://rosettacode.org/wiki/Levenshtein_distance#OCaml *)
-  let minimum a b c = min a (min b c) in
-  let m = String.length s0 in
-  let n = String.length s1 in
-  (* for all i and j, d.(i).(j) will hold the Levenshtein distance between
-       the first i characters of s and the first j characters of t *)
-  let d = Array.make_matrix (m+1) (n+1) 0 in
-  for i = 0 to m do d.(i).(0) <- i done;
-  for j = 0 to n do d.(0).(j) <- j done;
-  for j = 1 to n do
-    for i = 1 to m do
-      if s0.[i-1] = s1.[j-1]
-      then d.(i).(j) <- d.(i-1).(j-1)  (* no operation required *)
-      else
-      d.(i).(j) <- minimum
-          (d.(i-1).(j) + 1)   (* a deletion *)
-          (d.(i).(j-1) + 1)   (* an insertion *)
-          (d.(i-1).(j-1) + 1) (* a substitution *)
-    done;
-  done;
-  d.(m).(n)
-
-let string_suggest ?(dist = 2) candidates s =
-  let add (min, acc) name =
-    let d = edit_distance s name in
-    if d = min then min, (name :: acc) else
-    if d < min then d, [name] else
-    min, acc
-  in
-  let d, suggs = List.fold_left add (max_int, []) candidates in
-  if d <= dist (* suggest only if not too far *) then List.rev suggs else []
-
 let string_with_index_range ?(first = 0) ?last s =
   let max = String.length s - 1 in
   let last = match last with
@@ -76,7 +16,7 @@ let string_with_index_range ?(first = 0) ?last s =
   String.sub s first (last - first + 1)
 
 module Sexp = struct
-  open Sk_tlex
+  open Serialk_tlex
 
   (* S-expressions *)
 
@@ -400,20 +340,23 @@ end
 
 module Sexpg = Sexp.G
 module Sexpq = struct
-  open Sk_tlex
+  open Serialk_tlex
 
-  type path =
-    (* Paths in s-expressions interpreted as nested lists and dictionaries *)
-    ([`L | `K of string ] * Sexp.loc) list (* in reverse order *)
+  module Sset = Set.Make (String)
+  module Smap = Map.Make (String)
 
+  let pp_quote ppf s = Format.fprintf ppf "'%s'" s
   let pp_key = pp_quote
-(*    Fmt.tty [`Fg `Yellow; `Bold] (Fmt.quote ~mark:"'" Fmt.string) *)
+  (* Fmt.tty [`Fg `Yellow; `Bold] (Fmt.quote ~mark:"'" Fmt.string) *)
+
+  type path = (* Paths in s-expressions lists and dictionaries traversals *)
+    ([`L | `K of string ] * Sexp.loc) list (* in reverse order *)
 
   let path_to_string p =
     let seg = function `L, _ -> "()" | `K n, _ -> "." ^ n in
     String.concat "" (List.rev_map seg p)
 
-  let path_to_trace p =
+  let path_to_trace ?(pp_key = pp_key) p =
     let seg = function
     | `L, l -> Format.asprintf "%a: in list" Tloc.pp l
     | `K k, l -> Format.asprintf "%a: in key %a" Tloc.pp l pp_key k
@@ -424,23 +367,26 @@ module Sexpq = struct
 
   exception Err of path * Tloc.t * string
 
-  let pp_lines ppf s =
-    Format.fprintf ppf "@[<v>%a@]"
-      (Format.pp_print_list Format.pp_print_string)
-      (String.split_on_char '\n' s)
-
-  let err_to_string p loc msg = match p with
-  | [] -> Format.asprintf "%a:@\n%a" Tloc.pp loc pp_lines msg
-  | p ->
-      Format.asprintf "%a:@\n%a@\n  @[%a@]"
-        Tloc.pp loc pp_lines msg pp_lines (path_to_trace p)
-
   let err p l msg = raise_notrace (Err (p, l, msg))
   let errf p l fmt = Format.kasprintf (err p l) fmt
-  let err_exp p l exp fnd =
-    err p l (Format.asprintf "expected %s but found %s" exp fnd)
-  let err_list_but_atom p l = err_exp p l "a list" "an atom"
-  let err_atom_but_list p l = err_exp p l "an atom" "a list"
+  let err_exp_fnd_raw exp p l fnd = errf p l "found %s but expected %s" fnd exp
+  let err_exp exp p fnd =
+      errf p (Sexp.loc fnd) "found %s but expected %s" (Sexp.kind fnd) exp
+
+  let err_exp_atom = err_exp "atom"
+  let err_exp_list = err_exp "list"
+  let err_empty_list p l = errf p l "unexpected empty list"
+  let err_to_string p loc msg =
+    let pp_lines ppf s =
+      Format.fprintf ppf "@[<v>%a@]"
+        (Format.pp_print_list Format.pp_print_string)
+        (String.split_on_char '\n' s)
+    in
+    match p with
+    | [] -> Format.asprintf "%a:@\n%a" Tloc.pp loc pp_lines msg
+    | p ->
+        Format.asprintf "%a:@\n%a@\n  @[%a@]"
+          Tloc.pp loc pp_lines msg pp_lines (path_to_trace p)
 
   let esc_atom a = a (* TODO *)
 
@@ -477,47 +423,51 @@ module Sexpq = struct
 
   (* Atom queries *)
 
-  module Sset = Set.Make (String)
-  module Smap = Map.Make (String)
+  let atom p = function `A (a, _) -> a | s -> err_exp_atom p s
 
-  let atom p = function `A (a, _) -> a | `L (_, l) -> err_atom_but_list p l
+  let parsed_atom ~kind parse p = function
+  | `A (a, _) as s -> (match parse a with Ok v -> v | Error m -> fail m p s)
+  | s -> err_exp kind p s
+
   let enum ~kind ss p = function
   | `A (a, _) when Sset.mem a ss -> a
   | `A (a, l) ->
       let ss = Sset.elements ss in
-      let did_you_mean = pp_did_you_mean ~kind pp_quote in
-      let suggestions = match string_suggest ss a with [] -> ss | ss -> ss in
+      let did_you_mean = Tdec.err_did_you_mean ~kind pp_quote in
+      let suggestions = match Tdec.err_suggest ss a with
+      | [] -> ss | ss -> ss
+      in
       errf p l "%a" did_you_mean (a, suggestions)
-  | `L (_, l) -> err_atom_but_list p l
+  | s -> err_exp kind p s
 
   let enum_map ~kind sm p = function
-  | `L (_, l) -> err_atom_but_list p l
   | `A (a, l) ->
-      match Smap.find a sm with
+      begin match Smap.find a sm with
       | v -> v
       | exception Not_found ->
           let ss = Smap.fold (fun k _ acc -> k :: acc) sm [] in
-          let did_you_mean = pp_did_you_mean ~kind pp_quote in
-          let suggs = match string_suggest ss a with [] -> ss | ss -> ss in
+          let did_you_mean = Tdec.err_did_you_mean ~kind pp_quote in
+          let suggs = match Tdec.err_suggest ss a with [] -> ss | ss -> ss in
           errf p l "%a" did_you_mean (a, suggs)
-
-  let parsed_atom ~kind parse p = function
-  | `L (_, l) -> err_exp p l kind "a list"
-  | `A (a, _) as s -> match parse a with Ok v -> v | Error m -> fail m p s
+      end
+  | s -> err_exp kind p s
 
   let parsed_exn_atom ~kind parse p s =
     let err p l a kind = errf p l "%s: could not parse %s" (esc_atom a) kind in
     match s with
-    | `L (_, l) -> err p l kind "list"
-    | `A (a, l) -> try parse a with Failure _ -> err p l a kind
+    | `A (a, l) -> (try parse a with Failure _ -> err p l a kind)
+    | s -> err_exp kind p s
 
-  let bool p = function
-  | `L (_, l) -> err_exp p l "true of false" "a list"
-  | `A (a, l) ->
-      match a with
-      | "true" -> true
-      | "false" -> false
-      | a -> err_exp p l "true or false" (esc_atom a)
+  let bool p s =
+    let tf = "true or false" in
+    match s with
+    | `A (a, l) ->
+        begin match a with
+        | "true" -> true
+        | "false" -> false
+        | a -> err_exp_fnd_raw tf p l (esc_atom a)
+        end
+    | s -> err_exp tf p s
 
   let int = parsed_exn_atom ~kind:"integer" int_of_string
   let int32 = parsed_exn_atom ~kind:"int32" Int32.of_string
@@ -526,25 +476,21 @@ module Sexpq = struct
 
   (* List queries *)
 
-  let is_empty p = function
-  | `A (_, l) -> err_list_but_atom p l
-  | `L (vs, l) -> vs = []
-
+  let is_empty p = function `L (vs, l) -> vs = [] | s -> err_exp_list p s
   let hd q p = function
-  | `A (_,  l) -> err_list_but_atom p l
-  | `L ([], l) -> err_exp p l "a list element" "an empty list"
+  | `L ([], l) -> err_empty_list p l
   | `L (v :: _, l) -> q ((`L, l) :: p) v
+  | s -> err_exp_list p s
 
   let tl q p = function
-  | `A (_, l) -> err_list_but_atom p l
-  | `L ([], l) -> err_exp p l "a non empty list" "an empty list"
+  | `L ([], l) -> err_empty_list p l
   | `L (_ :: [], l) -> q p (`L ([], Tloc.to_end l))
   | `L (_ :: (v :: _ as s), l) ->
       let l = Tloc.with_start (Tloc.to_start (Sexp.loc v)) l in
       q p (`L (s, l))
+  | s -> err_exp_list p s
 
   let nth n q p = function
-  | `A (_, l) -> err_list_but_atom p l
   | `L (vs, l) ->
       let p = (`L, l) :: p in
       let k, vs = if n < 0 then -n - 1, List.rev vs else n, vs in
@@ -554,19 +500,20 @@ module Sexpq = struct
       | [] -> errf p l "%d: no such index in list" n
       in
       loop k vs
+  |  s -> err_exp_list p s
 
   let fold_list f q acc p = function
-  | `A (_, l) -> err_list_but_atom p l
   | `L (vs, l) ->
       let p = (`L, l) :: p in
       let add p acc v = f (q p v) acc in
       List.fold_left (add p) acc vs
+  | s -> err_exp_list p s
 
   let list qe = map List.rev (fold_list (fun v acc -> v :: acc) qe [])
 
   (* Dictionaries *)
 
-  let err_dict_atom p l = err_exp p l "a dictionary" "an atom"
+  let err_exp_dict = err_exp "dictionary"
 
   let dict_find bs k =
     let bs = List.rev bs in (* last one takes over. *)
@@ -591,26 +538,27 @@ module Sexpq = struct
     loop Sset.empty bs
 
   let key k q p = function
-  | `A (_, l) -> err_dict_atom p l
   | `L (bs, dl) ->
-      match dict_find bs k with
+      begin match dict_find bs k with
       | Some (kl, v) -> q ((`K k, kl) :: p) v
       | None ->
           let dom = dict_dom bs in
           let keys = Sset.elements dom in
-          let pre = pp_any "unbound" in
-          let did_you_mean = pp_did_you_mean ~pre ~kind:"key" pp_key in
-          errf p dl "%a" did_you_mean (k, string_suggest keys k)
+          let pre ppf () = Format.pp_print_string ppf "unbound" in
+          let did_you_mean = Tdec.err_did_you_mean ~pre ~kind:"key" pp_key in
+          errf p dl "%a" did_you_mean (k, Tdec.err_suggest keys k)
+      end
+  | s -> err_exp_dict p s
 
   let opt_key k q ~absent p = function
-  | `A (_, l) -> err_dict_atom p l
   | `L (bs, dl) ->
-      match dict_find bs k with
+      begin match dict_find bs k with
       | None -> absent
       | Some (kl, v) -> q ((`K k, kl) :: p) v
+      end
+  | s -> err_exp_dict p s
 
   let key_dom ~validate p = function
-  | `A (_, l) -> err_dict_atom p l
   | `L (bs, _) ->
       let add_key = match validate with
       | None -> fun p loc k acc -> Sset.add k acc
@@ -619,22 +567,23 @@ module Sexpq = struct
           | true -> Sset.add k acc
           | false ->
               let keys = Sset.elements dom in
-              let did_you_mean = pp_did_you_mean ~kind:"key" pp_key in
-              errf p loc "%a" did_you_mean (k, string_suggest keys k)
+              let did_you_mean = Tdec.err_did_you_mean ~kind:"key" pp_key in
+              errf p loc "%a" did_you_mean (k, Tdec.err_suggest keys k)
       in
       let add_key validate acc = function
-      | `A (_, l) -> err_list_but_atom p l
       | `L (`A (k, kloc) :: v, _) -> add_key p kloc k acc
-      | `L ([], l) -> err_exp p l "(atom ...) list" "an empty list"
-      | `L (_, l) -> err_exp p l "(atom ...) list" "a malformed list"
+      | `L ([], l) -> err_exp_fnd_raw "(atom ...) list" p l "empty list"
+      | `L (_, l) -> err_exp_fnd_raw "(atom ...) list" p l "malformed list"
+      | s -> err_exp_list p s
       in
       List.fold_left (add_key validate) Sset.empty bs
+  | s -> err_exp_dict p s
 
   let batom q p = function
   | `A (_, _)  as a -> q p a
   | `L ([`A _ as a], _) -> q p a
-  | `L ([], l) -> err_exp p l "an atom" "no value"
-  | `L (_, l) -> err_exp p l "an atom" "an unexpected list of elements"
+  | `L ([], l) -> err_exp_fnd_raw "atom" p l "nothing"
+  | `L (_, l) -> err_exp_fnd_raw "an atom" p l "list"
 
   (* OCaml encoding queries *)
 
@@ -643,11 +592,11 @@ module Sexpq = struct
   | `L ((`A ("some", _) :: v), l) ->
       Some (q ((`K "some", l) (* ? *) :: p) (`L (v, l)))
   | `A (a, l) ->
-      err_exp p l "none or (some ...)" (esc_atom a)
+      err_exp_fnd_raw "none or (some ...)" p l (esc_atom a)
   | `L ((`A (a, _) :: v), l) ->
-      err_exp p l "none or (some ...)" ("(" ^ (esc_atom a))
+      err_exp_fnd_raw "none or (some ...)" p l ("(" ^ (esc_atom a))
   | `L (_, l) ->
-      err_exp p l "none or (some ...)" "an arbitrary list"
+      err_exp_fnd_raw "none or (some ...)" p l "an arbitrary list"
 end
 
 module Sexpl = struct

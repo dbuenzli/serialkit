@@ -1,10 +1,12 @@
-serialk — Satisfies serial impulsions
+serialk — Satisfies OCaml serialization impulsions
 -------------------------------------------------------------------------------
 %%VERSION%%
 
-serialk is TODO
+serialk provides easy to use OCaml APIs to query, edit and
+(de)serialize data formats. JSON text and s-expressions are 
+supported for now.
 
-serialk is distributed under the ISC license.
+serialk is distributed under the ISC license and has no dependencies.
 
 Homepage: https://erratique.ch/software/serialk  
 
