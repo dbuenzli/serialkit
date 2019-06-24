@@ -5,12 +5,20 @@
   ---------------------------------------------------------------------------*)
 
 module Json = struct
+
+  type loc = Sk_tlex.Tloc.t
+  let loc_nil = Sk_tlex.Tloc.nil
+
   type t =
-  [ `Null | `Bool of bool | `Float of float| `String of string
-  | `A of t list | `O of (string * t) list ]
+  [ `Null of loc
+  | `Bool of bool * loc
+  | `Float of float * loc
+  | `String of string * loc
+  | `A of t list * loc
+  | `O of ((string * loc) * t) list * loc ]
 
   let kind_of_json = function
-  | `Null -> "null"
+  | `Null _ -> "null"
   | `Bool _ -> "bool"
   | `Float _ -> "float"
   | `String _ -> "string"
@@ -131,11 +139,11 @@ module Json = struct
   | 0x20 | 0x09 | 0x0A | 0x0D -> accept d; skip_ws d
   | _ -> ()
 
-  let parse_true d = accept_bytes d "true"; `Bool true
-  let parse_false d = accept_bytes d "false"; `Bool false
-  let parse_null d = accept_bytes d "null"; `Null
+  let parse_true d = accept_bytes d "true"; `Bool (true, loc_nil)
+  let parse_false d = accept_bytes d "false"; `Bool (false, loc_nil)
+  let parse_null d = accept_bytes d "null"; `Null loc_nil
   let parse_number d = (* not fully compliant *)
-    let conv d = try `Float (float_of_string (token d)) with
+    let conv d = try `Float (float_of_string (token d), loc_nil) with
     | Failure e -> err d "could not parse a float from: %S" (token d)
     in
     let rec taccept_non_sep d = match byte d with
@@ -154,14 +162,14 @@ module Json = struct
     in
     let rec loop d = match byte d with
     | 0x5C (* '\' *) -> accept d; parse_escape d; loop d
-    | 0x22 (* '"' *) -> accept d; `String (token d)
+    | 0x22 (* '"' *) -> accept d; `String ((token d), loc_nil)
     | 0xFFF -> err d "unclosed string"
     | _ -> taccept_utf_8 d; loop d
     in
     accept d; treset d; loop d
 
   let rec parse_object d = match (accept d; skip_ws d; byte d) with
-  | 0x7D (* '}' *) -> accept d; `O []
+  | 0x7D (* '}' *) -> accept d; `O ([], loc_nil)
   | _ ->
       let parse_name d =
         let `String name = match (skip_ws d; byte d) with
@@ -177,7 +185,8 @@ module Json = struct
             let v = (accept d; parse_value d) in
             begin match byte d with
             | 0x2C (* ',' *) -> accept d; loop ((name, v) :: acc) d
-            | 0x7D (* '}' *) -> accept d; `O (List.rev ((name, v) :: acc))
+            | 0x7D (* '}' *) -> accept d; `O (List.rev ((name, v) :: acc),
+                                              loc_nil)
             | _ -> err d "expected ',' or '}' found: %a" pp_byte d
             end
         | _ -> err d "expected ':' found: %a" pp_byte d
@@ -185,13 +194,13 @@ module Json = struct
       loop [] d
 
   and parse_array d = match (accept d; skip_ws d; byte d) with
-  | 0x5D (* ']' *) -> accept d; `A []
+  | 0x5D (* ']' *) -> accept d; `A ([], loc_nil)
   | _ ->
       let rec loop acc d =
         let v = parse_value d in
         match byte d with
         | 0x2C (* ',' *) -> accept d; loop (v :: acc) d
-        | 0x5D (* ']' *) -> accept d; `A (List.rev (v :: acc))
+        | 0x5D (* ']' *) -> accept d; `A (List.rev (v :: acc), loc_nil)
         | _ -> err d "expected ',' or ']' found: %a" pp_byte d
       in
       loop [] d
@@ -290,12 +299,13 @@ module Json = struct
 
     let option some o = match o with None -> null | Some v -> some v
     let rec json = function
-    | `Null -> null
-    | `Bool b -> bool b
-    | `Float f -> float f
-    | `String s -> string s
-    | `A a -> arr_end @@ List.fold_left (fun a e -> el (json e) a) arr a
-    | `O o -> obj_end @@ List.fold_left (fun o (m, v) -> mem m (json v) o) obj o
+    | `Null _ -> null
+    | `Bool (b, _) -> bool b
+    | `Float (f, _) -> float f
+    | `String (s, _) -> string s
+    | `A (a, _) -> arr_end @@ List.fold_left (fun a e -> el (json e) a) arr a
+    | `O (o, _) ->
+        obj_end @@ List.fold_left (fun o ((m, _), v) -> mem m (json v) o) obj o
 
     (* Output generated values *)
 
@@ -331,31 +341,38 @@ module Jsonq = struct
   (* Queries *)
 
   let json p j = j
-  let null p = function `Null -> () | j -> err p "null" j
-  let nullable q p = function `Null -> None | j -> Some (q p j)
-  let bool p = function `Bool b -> b | j -> err p "bool" j
-  let int p = function `Float f -> truncate f (* XXX *) | j -> err p "int" j
-  let float p = function `Float f -> f | j -> err p "float" j
-  let string p = function `String s -> s | j -> err p "string" j
+  let null p = function `Null _ -> () | j -> err p "null" j
+  let nullable q p = function `Null _ -> None | j -> Some (q p j)
+  let bool p = function `Bool (b, _) -> b | j -> err p "bool" j
+  let int p = function `Float (f, _) ->
+    truncate f (* XXX *) | j -> err p "int" j
+
+  let float p = function `Float (f, _) -> f | j -> err p "float" j
+  let string p = function `String (s, _) -> s | j -> err p "string" j
   let array qe p = function
-  | `A es -> List.(rev @@ rev_map (qe (`A :: p)) es)
+  | `A (es, _) -> List.(rev @@ rev_map (qe (`A :: p)) es)
   | j -> err p "array" j
 
+  let rec find_name n = function
+  | ((n', _), j) :: ms when String.equal n' n -> Some j
+  | _  :: ms -> find_name n ms
+  | [] -> None
+
   let mem name qmem qobj p = function
-  | `O ms as obj ->
+  | `O (ms, _) as obj ->
       let pm = `O name :: p in
-      begin match List.assoc name ms with
-      | exception Not_found -> err_miss_mem pm
-      | j -> qobj p obj (qmem pm j)
+      begin match find_name name ms with
+      | None -> err_miss_mem pm
+      | Some j -> qobj p obj (qmem pm j)
       end
   | j -> err p "object" j
 
   let mem_opt name qmem qobj p = function
-  | `O ms as obj ->
+  | `O (ms, _) as obj ->
       let pm = `O name :: p in
-      begin match List.assoc name ms with
-      | exception Not_found -> qobj p obj None
-      | j -> qobj p obj (Some (qmem pm j))
+      begin match find_name name ms with
+      | None -> qobj p obj None
+      | Some j -> qobj p obj (Some (qmem pm j))
       end
   | j -> err p "object" j
 
@@ -365,11 +382,11 @@ module Jsonq = struct
 
   let get v = v
   let sel name qmem p = function (* optimize obj get |> mem name qmem *)
-  | `O ms ->
+  | `O (ms, _) ->
       let pm = `O name :: p in
-      begin match List.assoc name ms with
-      | exception Not_found -> err_miss_mem pm
-      | j -> qmem pm j
+      begin match find_name name ms with
+      | None -> err_miss_mem pm
+      | Some j -> qmem pm j
       end
   | j -> err p "object" j
 

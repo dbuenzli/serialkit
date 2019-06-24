@@ -6,9 +6,7 @@
 
 (** JSON text support.
 
-    Open this module to use it, this only introduces modules in your scope.
-
-    {b FIXME.} Add locations the way {!B0_sexp} does. *)
+    Open this module to use it, this only introduces modules in your scope. *)
 
 (** JSON text definitions and codec.
 
@@ -17,9 +15,19 @@ module Json : sig
 
   (** {1:json JSON text} *)
 
+  type loc = Sk_tlex.Tloc.t
+  (** The type for tex location. *)
+
+  val loc_nil : loc
+  (** [loc_nil] is an invalid input location. *)
+
   type t =
-  [ `Null | `Bool of bool | `Float of float| `String of string
-  | `A of t list | `O of (string * t) list ]
+  [ `Null of loc
+  | `Bool of bool * loc
+  | `Float of float * loc
+  | `String of string * loc
+  | `A of t list * loc
+  | `O of ((string * loc) * t) list * loc ]
   (** The type for generic JSON text representations. *)
 
   (** {1:codec Codec} *)
