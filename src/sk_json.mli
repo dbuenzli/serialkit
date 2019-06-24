@@ -16,19 +16,41 @@ module Json : sig
   (** {1:json JSON text} *)
 
   type loc = Sk_tlex.Tloc.t
-  (** The type for tex location. *)
+  (** The type for text location. *)
 
   val loc_nil : loc
   (** [loc_nil] is an invalid input location. *)
 
-  type t =
+  type mem = (string * loc) * t
+  and t =
   [ `Null of loc
   | `Bool of bool * loc
   | `Float of float * loc
   | `String of string * loc
   | `A of t list * loc
-  | `O of ((string * loc) * t) list * loc ]
+  | `O of mem list * loc ]
   (** The type for generic JSON text representations. *)
+
+  val null : t
+  (** [null] is [`Null loc_nil]. *)
+
+  val bool : bool -> t
+  (** [bool b] is [`Bool (b, loc_nil)]. *)
+
+  val float : float -> t
+  (** [float b] is [`Float (f, loc_nil)]. *)
+
+  val string : string -> t
+  (** [string s] is [`String (s, loc_nil)]. *)
+
+  val a : t list -> t
+  (** [a vs] is [`A (vs, loc_nil)]. *)
+
+  val mem : string -> t -> mem
+  (** [mem n v] is [((n, loc_nil), v)]. *)
+
+  val o : mem list -> t
+  (** [o mems] is [`O (mems, loc_nil)]. *)
 
   (** {1:codec Codec} *)
 

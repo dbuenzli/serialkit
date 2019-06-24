@@ -5,17 +5,17 @@
   ---------------------------------------------------------------------------*)
 
 module Json = struct
-
   type loc = Sk_tlex.Tloc.t
   let loc_nil = Sk_tlex.Tloc.nil
 
-  type t =
+  type mem = (string * loc) * t
+  and t =
   [ `Null of loc
   | `Bool of bool * loc
   | `Float of float * loc
   | `String of string * loc
   | `A of t list * loc
-  | `O of ((string * loc) * t) list * loc ]
+  | `O of mem list * loc ]
 
   let kind_of_json = function
   | `Null _ -> "null"
@@ -24,6 +24,14 @@ module Json = struct
   | `String _ -> "string"
   | `A _ -> "array"
   | `O _ -> "object"
+
+  let null = `Null loc_nil
+  let bool b = `Bool (b, loc_nil)
+  let float f = `Float (f, loc_nil)
+  let string s = `String (s, loc_nil)
+  let a vs = `A (vs, loc_nil)
+  let mem n v = ((n, loc_nil), v)
+  let o mems = `O (mems, loc_nil)
 
   (* Decode *)
 
