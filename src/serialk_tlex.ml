@@ -30,28 +30,26 @@ module Err_msg = struct
         Format.fprintf ppf "@[%a %s %a%a.@ Did you mean %a ?@]"
           pre () kind pp_v v post () (pp_one_of pp_v) hints
 
+  let min_by f a b = if f a <= f b then a else b
+  let max_by f a b = if f a <= f b then b else a
+
   let edit_distance s0 s1 =
-    (* As found here http://rosettacode.org/wiki/Levenshtein_distance#OCaml *)
     let minimum a b c = min a (min b c) in
-    let m = String.length s0 in
-    let n = String.length s1 in
-    (* for all i and j, d.(i).(j) will hold the Levenshtein distance between
-       the first i characters of s and the first j characters of t *)
-    let d = Array.make_matrix (m+1) (n+1) 0 in
-    for i = 0 to m do d.(i).(0) <- i done;
-    for j = 0 to n do d.(0).(j) <- j done;
-    for j = 1 to n do
-      for i = 1 to m do
-        if s0.[i-1] = s1.[j-1]
-        then d.(i).(j) <- d.(i-1).(j-1)  (* no operation required *)
-        else
-        d.(i).(j) <- minimum
-            (d.(i-1).(j) + 1)   (* a deletion *)
-            (d.(i).(j-1) + 1)   (* an insertion *)
-            (d.(i-1).(j-1) + 1) (* a substitution *)
-      done;
-    done;
-    d.(m).(n)
+    let s0 = min_by String.length s0 s1     (* row *)
+    and s1 = max_by String.length s0 s1 in  (* column *)
+    let m = String.length s0 and n = String.length s1 in
+    let rec rows row0 row i =
+      if i > n then row0.(m) else begin
+        row.(0) <- i;
+        for j = 1 to m do
+          if s0.[j - 1] = s1.[i - 1] then
+            row.(j) <- row0.(j - 1)
+          else
+            row.(j) <- minimum (row0.(j - 1) + 1) (row0.(j) + 1) (row.(j - 1) + 1)
+        done;
+        rows row row0 (i + 1)
+      end in
+    rows (Array.init (m + 1) (fun x -> x)) (Array.make (m + 1) 0) 1
 
   let suggest ?(dist = 2) candidates s =
     let add (min, acc) name =
