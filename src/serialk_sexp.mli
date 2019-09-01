@@ -6,18 +6,24 @@
 
 (** S-expression support.
 
-    Consult information about the {{!sexp_syntax}syntax} of s-expressions.
+    The module {!Sexp} has general definitions and a codec for working
+    with s-expressions. {!Sexpg} generates s-expressions without going
+    through a generic representation. {!Sexpq} queries generic
+    representations with combinators.
+
+    A short introduction to s-expressions and the syntax parsed by the
+    codec is described {{!sexp_syntax}here}.
 
     Open this module to use it, this only introduces modules in your scope. *)
 
-(** {1:sexp S-expressions} *)
+(** {1:api API} *)
 
 (** S-expression definitions and codec. *)
 module Sexp : sig
 
   (** {1:sexp S-expressions} *)
 
-  type loc = Serialk_tlex.Tloc.t
+  type loc = Serialk_text.Tloc.t
   (** The type for text locations. *)
 
   val loc_nil : loc
@@ -73,25 +79,105 @@ module Sexp : sig
       {b Warning.} Assumes all OCaml strings in the formatted value are
       UTF-8 encoded. *)
 
+  val pp_dump : Format.formatter -> t -> unit
+
   (** {1:codec Codec} *)
 
-  val of_string : ?file:Serialk_tlex.Tloc.fpath -> string -> (t, string) result
-  (** [of_string ?file s] parses a {e sequence} of s-expressions from
+  val seq_of_string :
+    ?file:Serialk_text.Tloc.fpath -> string -> (t, string) result
+  (** [seq_of_string ?file s] parses a {e sequence} of s-expressions from
       [s]. [file] is the file for locations, defaults to ["-"]. The
-      sequence is returned as a fake s-expression list that spans the
-      whole string; note that this list does not exist syntactically
-      in [s].
+      sequence is returned as a fake s-expression list that spans from
+      the start of the first s-expression in [s] to the end of the
+      last one; note that this list does not exist syntactically in
+      [s].
+
+      If there are no s-expression in [s] the list is empty its
+      location has both start and end positions at byte [0] (which may
+      not exist).
 
       {b Note.} All OCaml strings returned by this function are UTF-8
       encoded. *)
 
-  val to_string : t -> string
-  (** [to_string s] encodes [s] to a sequence of s-expressions. If [s]
+  val seq_to_string : t -> string
+  (** [seq_to_string s] encodes [s] to a sequence of s-expressions. If [s]
       is an s-expression list this wrapping list is not syntactically
       represented in the output (see also {!of_string}), use
       [to_string (list [l])] if you want to output [l] as a list.
 
       {b Warning.} Assumes all OCaml strings in [s] are UTF-8 encoded. *)
+
+  (** {1:sexp_path S-expression paths} *)
+
+  type index =
+  | Key of string
+  | Nth of int (** *)
+  (** The type for indexing operations.
+      {ul
+      {- [Key k], lookup binding [k] in an s-expression
+         {{!sexp_dict}dictionary.}}
+      {- [Nth n], lookup zero-based element [n] in a list. If [n]
+         is negative, counts the number of elements from the end of the
+         list, i.e. [-1] is the last list element.}} *)
+
+  type path = index list
+  (** The type for paths, a sequence of indexing operations in {b reverse}
+      order. *)
+
+  val pave_index : ?stub:t -> index -> t -> t
+  (** [pave_index ~stub i s] is either a dictionary binding of [s] to [k]
+      if [i] is [Key k] or a list whose [n]th element is [s] if [i] is
+      [Nth n] and previous elements in the list set to [stub] (defaults
+      to [atom ""]. *)
+
+  val seq_pave_index : ?stub:t -> index -> t -> t
+  (** [seq_pave_index ?stub i s] is like {!pave_index} but if
+      [s] is a list it splices the sequence at the given index. *)
+
+  val pave_path : ?stub:t -> path -> t -> t
+  (** [pave_path ~stub p s] paves the indexes of [p] with {!pave_index} so
+      that [s] becomes indexed by [p]. *)
+
+  val seq_pave_path : ?stub:t -> path -> t -> t
+  (** [seq_pave_path ~stub p s] is like {!pave_path} except if [s] is
+      a list it splices the sequence at the given index. *)
+
+  val path_of_string : string -> (path, string) result
+  (** [path_of_string] parses a path from [s] according to the syntax
+      {{!sexp_path_caret}here}. *)
+
+  val pp_path : Format.formatter -> path -> unit
+  (** [pp_path] is a formatter for paths. *)
+
+  (** {1:caret Caret} *)
+
+  type caret =
+  | Before of path (** The void before the s-expression found by the path. *)
+  | Over of path  (** The s-expression found by the path. *)
+  | After of path (** The void after the s-expression found by the path. *)
+  (** The type for carets. *)
+
+  val caret_path : caret -> path
+  (** [caret_path c] is the caret's path. *)
+
+  val caret_of_string : string -> (caret, string) result
+  (** [caret_of_string s] parses a caret from [s] according to the
+      syntax defined {{!sexp_path_caret}here}. *)
+
+  val repath_caret : path -> caret -> caret
+  (** [repath_caret p c] replaces [c]'s path with [p]. *)
+
+  val pave_caret : ?stub:t -> caret -> t -> t
+  (** [pave_caret ~stub c s] paves the indexes of caret [c] with
+      {!pave_index} so that [s] becomes located by the caret. In the
+      [Before] and [After] case the last index is ignored. *)
+
+  val seq_pave_caret : ?stub:t -> caret -> t -> t
+  (** [seq_pave_caret ~stub p s] is like {!pave_caret} except if [s]
+      is a list it splices the sequence at the given index. *)
+
+  val pp_caret : Format.formatter -> caret -> unit
+  (** [pp_caret] is a formatter for carets. *)
 end
 
 (** S-expression generation. *)
@@ -162,22 +248,37 @@ module Sexpg : sig
   (** [to_string g] is the generated s-expression value [g] as a string. *)
 end
 
-(** S-expression queries.
-
-    {b TODO} maybe we could expose a bit more options for error
-    reporting. In particular the internal [path] type and a combinator
-    in the vein of {!loc} to report back the path trace. *)
+(** S-expression queries. *)
 module Sexpq : sig
 
-  (** {1:query Queries} *)
+  (** {1:query paths Result paths} *)
+
+  type path = (Sexp.index * Sexp.loc) list
+  (** The type for query result paths. This is a sequence of indexing
+      operations tupled with the index location, in {b reverse}
+      order. *)
+
+  val pp_path :
+    ?pp_key:(Format.formatter -> string -> unit) -> Format.formatter ->
+    path -> unit
+  (** [pp_path ~pp_key] formats path using [pp_key] to format the keys. *)
+
+  (** {1:queries Queries} *)
 
   type 'a t
-  (** The type for s-expression queries. A query either fails or
-      succeeds against a s-expression with a value of type ['a]. *)
+  (** The type for s-expression queries. A query either succeeds
+      against an s-expression with a value of type ['a] or it fails. *)
 
   val query : 'a t -> Sexp.t -> ('a, string) result
   (** [query q s] is [Ok v] if the query [q] succeeds on [s] and a (multiline)
-      [Error e] otherwise. *)
+      [Error e] with location information otherwise. *)
+
+  val query' :
+    'a t -> Sexp.t -> ('a, path * Sexp.loc * string) result
+  (** [query' q s] is like {!query} except in the error case it
+      returns [Error (p, l, e)] with [p] the query path that leads to
+      the error, [l] the location of the error and [e] the error
+      message. *)
 
   (** {1:outcome Success and failure} *)
 
@@ -197,14 +298,14 @@ module Sexpq : sig
   (** {1:qcomb Query combinators} *)
 
   val app : ('a -> 'b) t -> 'a t -> 'b t
-  (** [app fq q] queries a s-expression first with [fq] and then with [q]
+  (** [app fq q] queries an s-expression first with [fq] and then with [q]
       and applies the result of latter to the former. *)
 
   val ( $ ) : ('a -> 'b) t -> 'a t -> 'b t
   (** [f $ v] is [app f v]. *)
 
   val bind : 'a t -> ('a -> 'b t) -> 'b t
-  (** [bind q f] queries a s-expression with [q], applies the result to
+  (** [bind q f] queries an s-expression with [q], applies the result to
       [f] and re-queries the s-expression with the result. *)
 
   val map : ('a -> 'b) -> 'a t -> 'b t
@@ -219,7 +320,8 @@ module Sexpq : sig
   (** [fold ~atom ~list] queries atoms with [atom] and lists with [list]. *)
 
   val sexp : Sexp.t t
-  (** [sexp] queries any s-expression and returns it. *)
+  (** [sexp] queries any s-expression and returns its generic
+      representation. *)
 
   val loc : Sexp.loc t
   (** [loc] is [map Sexp.loc sexp]. *)
@@ -277,15 +379,19 @@ module Sexpq : sig
   (** [is_empty] queries a list for emptyness. *)
 
   val hd : 'a t -> 'a t
-  (** [hd q] queries the head of a list with [q]. *)
+  (** [hd q] queries the head of a list with [q]. Fails on empty lists. *)
 
   val tl : 'a t -> 'a t
-  (** [tail q] queries the tail of a list with [q]. *)
+  (** [tail q] queries the tail of a list with [q]. Fails on empty lists. *)
 
   val nth : int -> 'a t -> 'a t
-  (** [nth n q] queries the [n]th element of a list with [q]. If [n]
+  (** [nth n q] queries the [n]th index of a list with [q]. If [n]
       is negative counts from the end of the list, so [-1] is the last
-      list element. *)
+      list element. The query fails if the index does not exist or on atoms. *)
+
+  val find_nth : int -> 'a t -> absent:'a -> 'a t
+  (** [find_nth n q] is like {!nth} but returns [absent] if the index
+      does not exist. *)
 
   val fold_list : ('a -> 'b -> 'b) -> 'a t -> 'b -> 'b t
   (** [fold_list f q acc] queries the elements of a list from left to
@@ -295,25 +401,24 @@ module Sexpq : sig
   val list : 'a t -> 'a list t
   (** [list q] queries the elements of a list with [q]. *)
 
+  val lone_atom : 'a t -> 'a t
+  (** [lone_atom q] queries an atom or the atom of a singleton list
+      with [q]. It fails on empty lists or non-singleton lists.
+
+      This is useful for singleton {{!sexp_dict}dictionary}
+      bindings. In error reporting treats the list as if it doesn't
+      exist syntactically which is the case in dictionary bindings. *)
+
   (** {1:qdict Dictionary queries}
 
-      Queries for s-expression dictionaries. A dictionary is a list of
-      bindings. A binding is a list that starts with an atom key, the remaing
-      elements are the binding's value. For example in this binding:
-{v
-(key v0 v1 ...)
-v}
-      The key is [key] and the value the possibly empty list [v0], [v1],
-      ... of s-expressions. The value is always represented by a fake
-      (doesn't exist syntactically) s-expression list whose location
-      spans the whole binding expression. *)
+      Queries for s-expression {{!sexp}dictionaries}. *)
 
   val key : string -> 'a t -> 'a t
   (** [key k q] queries the value of key [k] of a dictionary with [q].
       The query fails if [k] is not bound or on atoms. *)
 
-  val opt_key : string -> 'a t -> absent:'a -> 'a t
-  (** [opt_key k q ~absent] queries the value of the optional key [k]
+  val find_key : string -> 'a t -> absent:'a -> 'a t
+  (** [find_key k q ~absent] queries the value of the optional key [k]
       of a dictionary with [q] and uses [absent] if [k] is not bound.
       The query fails on atoms. *)
 
@@ -324,11 +429,30 @@ v}
 
       {b XXX} Would be nice to provide support for deprecation. *)
 
-  val batom : 'a t -> 'a t
-  (** [batom q] queries a singleton atom list with an atom query
-      [q]. Useful for singleton {{!Sexp.dict}dictionary bindings}. In
-      error reporting treats the list as if it doesn't exist
-      syntactically which is the case in dictionary bindings. *)
+  (** {1:path_caret Path and caret queries} *)
+
+  val index : Sexp.index -> 'a t -> 'a t
+  (** [index i q] queries the s-expression index [i] with [q]. This is
+      basically {!key} or {!nth} according to [i]. *)
+
+  val find_index : Sexp.index -> 'a t -> absent:'a -> 'a t
+  (** [find_index i q] is like {!index} but returns [absent] if the
+      index does not exist. This is basically {!find_key} or
+      {!find_nth} according to [i]. *)
+
+  val path : Sexp.path -> 'a t -> 'a t
+  (** [path p q] queries the s-expression indexed by [p] using
+      [q]. The query fails if the path cannot be followed. *)
+
+  val find_path : Sexp.path -> 'a t -> absent:'a -> 'a t
+  (** [find_path p q] queries the value indexed by [p] using [q], the
+      query succeeds with [absent] if the path doesn't exist. *)
+
+  val probe_path : Sexp.path -> (Sexp.loc * Sexp.path) t
+  (** [probe_path p] is a query that probes for [p]'s existence.  It
+      succeeds with either the location of the s-expression found by
+      [p] and empty path, or the location of the s-expression that
+      couldn't be indexed and the remaining path. *)
 
   (** {1:ocaml OCaml datatype encoding queries} *)
 
@@ -337,89 +461,69 @@ v}
       according the encoding of {!Sexpg.option}. *)
 end
 
-(** S-expression locators.
+(** {1:sexp_dict Dictionaries}
 
-    Locators provide a way for end users to address specific locations in
-    s-expressions. A location is either before, after or onto an
-    s-expression.
+    An s-expression {e dictionary} is a list of bindings. A {e
+    binding} is a list that starts with a {e key} and the remaining
+    elements of the list are the binding's {e value}. For example in this
+    binding:
+{v
+(key v0 v1 ...)
+v}
+    The key is [key] and the value the possibly empty list [v0], [v1],
+    ... of s-expressions. The {{!Sexpq.qdict}API} for dictionaries
+    represents the value by a fake (doesn't exist syntactically)
+    s-expression list whose text location starts at the first element
+    of the value.
+
+    {1:sexp_path_caret Path & caret syntax}
+
+    Path and carets provide a way for end users to address
+    s-expressions and edit locations.
+
+    A {e path} is a sequence of {{!sexp_dict}key} and list indexing
+    operations. Applying the path to an s-expression leads to an
+    s-expression or nothing if one of the indices does not exist.
+
+    A {e caret} is a path and a spatial specification for the
+    s-expression found by the path. The caret indicates either the
+    void before that expression, the expression itself or the void
+    after it.
+
+    Here are a few examples of paths and carets, syntactically the
+    charater ['v'] is used to denote the caret's insertion point. If there
+    is not caret character this is either a path or an {{!Sexp.Over}over} caret.
 
 {v
 ocaml.deps        # value of key 'deps' of dictionary 'ocaml'
-ocaml.v[deps]     # before key binding
-ocaml.[deps]v     # after key binding
+ocaml.v[deps]     # before the key binding
+ocaml.[deps]v     # after the key binding
 
 ocaml.deps.[0]    # first element of key 'deps' of dictionary 'ocaml'
-ocaml.deps.v[0]   # before first element
-ocaml.deps.[0]v   # after first element
+ocaml.deps.v[0]   # before first element (if any)
+ocaml.deps.[0]v   # after first element (if any)
 
 ocaml.deps.[-1]   # last element of key 'deps' of dictionary 'ocaml'
-ocaml.deps.v[-1]  # before last element
-ocaml.deps.[-1]v  # after last element
+ocaml.deps.v[-1]  # before last element (if any)
+ocaml.deps.[-1]v  # after last element (if any)
 v}
 
-    More formally a {e locator} is a [.] separated list of indices
-    ended by a location. A location is either an index or an index prefixed
-    or suffixed by the character [v] to respectively denote insertion
-    before or after.
+    More formally a {e path} is a [.] seperated list of indices.
 
-    An {e index} is written [[i]] with [i] either a zero-based list index
-    (with negative indices counting from the end of the list) or a
-    dictionary key [key]; in the latter case if there is no ambiguity,
-    the surrounding brackets can be dropped.
+    An {e index} is written [[i]] with [i] either a zero-based list
+    index (with negative indices counting from the end of the list,
+    [-1] is the last element) or a dictionary key [key]; in the latter
+    case if there is no ambiguity, the surrounding brackets can be
+    dropped.
 
-    {b Note.} There's no form of quoting at the moment this means
-    key names can't contain, [\[], [\]], or be numbers. *)
-module Sexpl : sig
+    A caret is a path whose last index brackets can be prefixed or suffixed
+    by the character ['v'] to respectively denote the void before or after
+    the s-expression found by the path.
 
-  (** {1:path Paths}
+    {b Note.} The syntax has no form of quoting at the moment this
+    means key names can't contain, [\[], [\]], or be numbers.
 
-      FIXME we likely want to move that to Sexpq. *)
-
-  type path
-  (** The type for paths. A sequence of indexing operations. *)
-
-  val start : path
-  (** [start] is the starting s-expression to index. *)
-
-  val key : string -> path -> path
-  (** [key k p] indexes the s-expression at path [p] using key [k]. *)
-
-  val nth : int -> path -> path
-  (** [nth i p] indexes the s-expression at path [p] with [i].
-      If [i] is negative counts the number of element from the end of
-      the list, i.e. [-1] is the last list element.  *)
-
-  val query_path : path -> 'a Sexpq.t -> 'a Sexpq.t
-  (** [query_path p q] queries the value indexed by [p] using [q]. *)
-
-  val query_path_opt : path -> 'a Sexpq.t -> 'a option Sexpq.t
-  (** [query_path p q] queries the value indexed by [p] using [q],
-      the query succeeds with [None] if the path doesn't exist. *)
-
-  val path_of_string : string -> (path, string) result
-
-  (** {1:loc Locators} *)
-
-  type t =
-  | Before of path (** The void before the path. *)
-  | Onto of path  (** The value at the path. *)
-  | After of path (** The void after the path. *)
-  (** The type for locators. *)
-
-  val path : t -> path
-  (** [path l] is the locator's path. *)
-
-  val edit_loc : t -> Sexp.loc * string list Sexpq.t
-  (** [edit_loc t] is a query that returns a text location
-      where the locator [t] should perform an edition and
-      a list of nested key bindings that need to be created. *)
-
-  val of_string : string -> (t, string) result
-  (** [of_string s] parses a locator [s] according to the
-      syntax defined in the preamble. *)
-end
-
-(** {1:sexp_syntax S-expressions syntax}
+    {1:sexp_syntax S-expression syntax}
 
     S-expressions are a general way of describing data via atoms
     (sequences of characters) and lists delimited by parentheses.
@@ -448,7 +552,7 @@ v}
     (U+0000..U+001F and U+007F) except {{!whitespace}whitespace} are
     forbidden in unescaped form.
 
-    {2:sexp S-expressions and sequences thereof}
+    {2:sexp S-expressions}
 
     An {e s-expression} is either an {{!atoms}{e atom}} or a
     {{!lists}{e list}} of s-expressions interspaced with
@@ -566,7 +670,7 @@ four) expressions)
 () ; the empty list
 v}
 
-    {2:grammar S-expression grammar}
+    {2:grammar Formal grammar}
 
     The following {{:https://tools.ietf.org/html/rfc5234}RFC 5234}
     ABNF grammar is defined on a sequence of
@@ -599,8 +703,8 @@ v}
        {{:http://unicode.org/glossary/#unicode_scalar_value}Unicode scalar
        value.}}
     {- A comment can be ended by the end of the character sequence rather
-       than [nl]. }} *)
-
+       than [nl]. }}
+*)
 (*---------------------------------------------------------------------------
    Copyright (c) 2019 The b0 programmers
 

@@ -14,5 +14,5 @@ constraint may be lifted in the future.
 {!modules:
 Serialk_json
 Serialk_sexp
-Serialk_tlex
+Serialk_text
 }

@@ -15,7 +15,7 @@ module Json : sig
 
   (** {1:json JSON text} *)
 
-  type loc = Serialk_tlex.Tloc.t
+  type loc = Serialk_text.Tloc.t
   (** The type for text locations. *)
 
   val loc_nil : loc
@@ -125,7 +125,7 @@ module Json : sig
 
   (** {1:codec Codec} *)
 
-  val of_string : ?file:Serialk_tlex.Tloc.fpath -> string -> (t, string) result
+  val of_string : ?file:Serialk_text.Tloc.fpath -> string -> (t, string) result
   (** [of_string s] parses JSON text from [s] according to
       {{:https://tools.ietf.org/html/rfc8259}RFC8259} with the following
       limitations:
@@ -282,7 +282,7 @@ module Jsonq : sig
 
   val fold :
     null:'a t -> bool:'a t -> float:'a t -> string:'a t ->  array:'a t ->
-    obj:'a t -> 'a  t
+    obj:'a t -> 'a t
   (** [fold] queries JSON values according to their kind using the
       provided queries. *)
 
@@ -363,7 +363,7 @@ module Jsonq : sig
   val array : 'a t -> 'a list t
   (** [array q] queries the elements of an array with [q]. *)
 
-  (** {1:objects Arrays}
+  (** {1:objects Objects}
 
       These queries only succeed on JSON object values. *)
 

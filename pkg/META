@@ -2,20 +2,20 @@ description = "Satisfies OCaml serialization impulsions"
 version = "%%VERSION_NUM%%"
 requires = ""
 
-package "tlex" (
-  description = "Text lexing support"
+package "text" (
+  description = "Text support"
   version = "%%VERSION_NUM%%"
   requires = ""
-  archive(byte) = "serialk_tlex.cma"
-  archive(native) = "serialk_tlex.cmxa"
-  plugin(byte) = "serialk_tlex.cma"
-  plugin(native) = "serialk_tlex.cmxs"
+  archive(byte) = "serialk_text.cma"
+  archive(native) = "serialk_text.cmxa"
+  plugin(byte) = "serialk_text.cma"
+  plugin(native) = "serialk_text.cmxs"
 )
 
 package "json" (
   description = "JSON support"
   version = "%%VERSION_NUM%%"
-  requires = "serialk.tlex"
+  requires = "serialk.text"
   archive(byte) = "serialk_json.cma"
   archive(native) = "serialk_json.cmxa"
   plugin(byte) = "serialk_json.cma"
@@ -25,7 +25,7 @@ package "json" (
 package "sexp" (
   description = "JSON support"
   version = "%%VERSION_NUM%%"
-  requires = "serialk.tlex"
+  requires = "serialk.text"
   archive(byte) = "serialk_sexp.cma"
   archive(native) = "serialk_sexp.cmxa"
   plugin(byte) = "serialk_sexp.cma"

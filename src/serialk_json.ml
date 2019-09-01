@@ -5,7 +5,7 @@
   ---------------------------------------------------------------------------*)
 
 module Json = struct
-  open Serialk_tlex
+  open Serialk_text
 
   (* JSON text *)
 
@@ -364,7 +364,7 @@ end
 
 module Jsong = Json.G
 module Jsonq = struct
-  open Serialk_tlex
+  open Serialk_text
 
   module Sset = Set.Make (String)
   module Smap = Map.Make (String)
@@ -500,7 +500,7 @@ module Jsonq = struct
   | `A ([], l) -> err_empty_array p l
   | `A (_ :: [], l) -> q p (`A ([], Tloc.to_end l))
   | `A (_ :: (v :: _ as a), l) ->
-      let l = Tloc.with_start (Tloc.to_start (Json.loc v)) l in
+      let l = Tloc.restart ~at:(Tloc.to_start (Json.loc v)) l in
       q p (`A (a, l))
   | j -> err_exp_array p j
 
