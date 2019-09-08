@@ -76,9 +76,9 @@ let locs file =
   log_on_error ~exit:err_sexp (Sexp.seq_of_string ~file content) @@ fun sexp ->
   let pp_loc ppf l = Serialk_text.Tloc.pp ppf l; Format.pp_print_char ppf ':' in
   let rec pp_locs ppf = function
-  | `A (a, l) -> pp_loc ppf l
-  | `L (vs, l) ->
-      pp_loc ppf l; Format.pp_print_cut ppf ();
+  | `A (_, _) as s -> pp_loc ppf (Sexp.loc s)
+  | `L (vs, _) as s ->
+      pp_loc ppf (Sexp.loc s); Format.pp_print_cut ppf ();
       Format.pp_print_list pp_locs ppf vs
   in
   Format.printf "@[<v>%a@]@." pp_locs sexp; 0
@@ -100,23 +100,6 @@ let set file caret v =
   in
   let res = Serialk_text.Tloc.string_replace ~start ~stop ~rep content in
   Format.printf "%s" res; 0
-
-let test file =
-  log_on_error ~exit:err_file (File.read file) @@ fun content ->
-  log_on_error ~exit:err_sexp (Sexp.seq_of_string ~file content) @@ fun sexp ->
-  let dump_loc ppf l =
-    Format.fprintf ppf "%a: %a@."
-      Serialk_text.Tloc.pp l Serialk_text.Tloc.pp_dump l
-  in
-  let rec dump_locs ppf = function
-  | `A (a, l) -> dump_loc ppf l
-  | `L (vs, l) -> dump_loc ppf l; List.iter (dump_locs ppf) vs
-  in
-  Format.printf "%a@." dump_locs sexp;
-  let q = Sexpq.(nth 1 @@ nth 1 @@ bool) in
-  let result = Sexpq.query q sexp in
-  log_on_error ~exit:err_query result @@ fun result ->
-  Format.printf "Query suceeded@."; 0
 
 (* Command line interface *)
 
@@ -220,12 +203,7 @@ let locs_cmd =
   Term.(const locs $ file_arg),
   Term.info "locs" ~doc ~sdocs ~exits ~man
 
-let test_cmd =
-  let doc = "Test" in
-  Term.(const test $ file_arg),
-  Term.info "test" ~doc
-
-let cmds = [delete_cmd; get_cmd; locs_cmd; set_cmd; test_cmd]
+let cmds = [delete_cmd; get_cmd; locs_cmd; set_cmd;]
 
 let default =
   let doc = "Process s-expressions" in

@@ -8,27 +8,35 @@ open Serialk_text
 
 module Sexp = struct
 
-  (* S-expressions *)
+  (* Parse information *)
 
   type loc = Tloc.t
-  type t = [ `A of string * loc | `L of t list * loc ]
-
   let loc_nil = Tloc.nil
-  let loc = function `A (_, loc) | `L (_, loc) -> loc
+
+  type a_meta = { a_loc : loc; a_quoted : bool }
+  let a_meta_nil = { a_loc = loc_nil; a_quoted = false }
+
+  type l_meta = { l_loc : loc }
+  let l_meta_nil = { l_loc = loc_nil }
+
+  (* S-expressions *)
+
+  type t = [ `A of string * a_meta | `L of t list * l_meta ]
+  let loc = function `A (_, p) -> p.a_loc | `L (_, p) -> p.l_loc
 
   (* Constructors *)
 
-  let atom a = `A (a, loc_nil)
-  let list l = `L (l, loc_nil)
+  let atom a = `A (a, a_meta_nil)
+  let list l = `L (l, l_meta_nil)
 
   (* Accessors *)
 
-  let kind = function `A _ -> "atom" | `L _ -> "list"
+  let kind = function `A (_, _) -> "atom" | `L (_, _) -> "list"
   let err_exp exp fnd =
     Format.asprintf "%a: %s but expected %s" Tloc.pp (loc fnd) (kind fnd) exp
 
-  let err_exp_atom = err_exp "atom"
-  let err_exp_list = err_exp "list"
+  let err_exp_atom s = err_exp "atom" s
+  let err_exp_list s = err_exp "list" s
   let err_get = invalid_arg
 
   let to_atom = function `A (a, _) -> Ok a | s -> Error (err_exp_atom s)
@@ -131,8 +139,8 @@ module Sexp = struct
     let sbyte = Tdec.pos d and sline = Tdec.line d in
     let rec loop d = match dec_byte d with
     | 0x22 ->
-        let loc = Tdec.loc_to_here d ~sbyte ~sline in
-        Tdec.accept_byte d; `A (Tdec.tok_pop d, loc)
+        let a_loc = Tdec.loc_to_here d ~sbyte ~sline in
+        Tdec.accept_byte d; `A (Tdec.tok_pop d, { a_loc; a_quoted = true })
     | 0x5E -> dec_esc d; loop d
     | 0xFFFF -> err_eoi_qtoken d ~sbyte ~sline
     | _ -> Tdec.tok_accept_uchar d; loop d
@@ -147,8 +155,8 @@ module Sexp = struct
     | 0xFFFF ->
         let ebyte = Tdec.pos d - 1 in
         let eline = Tdec.line d in
-        let loc = Tdec.loc d ~sbyte ~ebyte ~sline ~eline in
-        `A (Tdec.tok_pop d, loc)
+        let a_loc = Tdec.loc d ~sbyte ~ebyte ~sline ~eline in
+        `A (Tdec.tok_pop d, { a_loc; a_quoted = false })
     | 0x5E -> err_esc_char d
     | _ -> Tdec.tok_accept_uchar d; loop d
     in
@@ -157,12 +165,14 @@ module Sexp = struct
   and dec_eoi d stack acc = match stack with
   | (sbyte, sline, _) :: [] ->
       begin match acc with
-      | [] -> `L ([], Tdec.loc d ~sbyte:0 ~ebyte:0 ~sline:(1,0) ~eline:(1,0))
+      | [] ->
+          let l_loc = Tdec.loc d ~sbyte:0 ~ebyte:0 ~sline:(1,0) ~eline:(1,0) in
+          `L ([], { l_loc })
       | acc ->
           let eloc = loc (List.hd acc) in
           let acc = List.rev acc in
           let sloc = loc (List.hd acc) in
-          `L (acc, Tloc.merge sloc eloc)
+          `L (acc, { l_loc = Tloc.merge sloc eloc })
       end
   | (sbyte, sline, _) :: locs -> err_eoi_list d ~sbyte ~sline
   | [] -> assert false
@@ -177,7 +187,7 @@ module Sexp = struct
       | (sbyte, sline, prev_acc) :: stack ->
           let ebyte = Tdec.pos d and eline = Tdec.line d in
           let loc = Tdec.loc d ~sbyte ~ebyte ~sline ~eline in
-          let acc = `L (List.rev acc, loc) :: prev_acc in
+          let acc = `L (List.rev acc, { l_loc = loc }) :: prev_acc in
           Tdec.accept_byte d; dec_sexp_seq d stack acc
       | [] -> assert false
       end
@@ -320,9 +330,9 @@ module Sexp = struct
   let pp ppf s = _pp (Buffer.create 255) ppf s
 
   let rec pp_dump ppf = function (* Not T.R *)
-  | `A (a, l) -> Format.fprintf ppf "(A:%a %S)" Tloc.pp_dump l a
-  | `L (vs, l) ->
-      Format.fprintf ppf "@[<1>(L:%a " Tloc.pp_dump l;
+  | `A (a, m) -> Format.fprintf ppf "(A:%a %S)" Tloc.pp_dump m.a_loc  a
+  | `L (vs, m) ->
+      Format.fprintf ppf "@[<1>(L:%a " Tloc.pp_dump m.l_loc;
       Format.pp_print_list pp_dump ppf vs;
       Format.fprintf ppf ")@]"
 
@@ -566,37 +576,38 @@ module Sexpq = struct
 
   let enum ~kind ss p = function
   | `A (a, _) when Sset.mem a ss -> a
-  | `A (a, l) ->
+  | `A (a, m) ->
       let ss = Sset.elements ss in
       let did_you_mean = Tdec.err_did_you_mean ~kind pp_quote in
       let suggestions = match Tdec.err_suggest ss a with
       | [] -> ss | ss -> ss
       in
-      errf p l "%a" did_you_mean (a, suggestions)
+      errf p m.Sexp.a_loc "%a" did_you_mean (a, suggestions)
   | `L (_, _) as s -> err_exp kind p s
 
   let enum_map ~kind sm p = function
   | `L (_, _) as s -> err_exp kind p s
-  | `A (a, l) ->
+  | `A (a, m) ->
       match Smap.find a sm with
       | v -> v
       | exception Not_found ->
           let ss = Smap.fold (fun k _ acc -> k :: acc) sm [] in
           let did_you_mean = Tdec.err_did_you_mean ~kind pp_quote in
           let suggs = match Tdec.err_suggest ss a with [] -> ss | ss -> ss in
-          errf p l "%a" did_you_mean (a, suggs)
+          errf p m.Sexp.a_loc "%a" did_you_mean (a, suggs)
 
   let parsed_exn_atom ~kind parse p = function
   | `L (_, _) as s -> err_exp kind p s
-  | `A (a, l) ->
+  | `A (a, m) ->
       try parse a with
-      | Failure _ -> errf p l "%s: could not parse %s" (esc_atom a) kind
+      | Failure _ ->
+          errf p m.Sexp.a_loc "%s: could not parse %s" (esc_atom a) kind
 
   let _tf = "true or false"
   let bool p = function
   | `A ("true", _) -> true
   | `A ("false", _) -> false
-  | `A (a, l) -> err_exp_fnd_raw _tf p l (esc_atom a)
+  | `A (a, m) -> err_exp_fnd_raw _tf p m.Sexp.a_loc (esc_atom a)
   | `L (_, _) as s -> err_exp _tf p s
 
   let int = parsed_exn_atom ~kind:"integer" int_of_string
@@ -607,27 +618,28 @@ module Sexpq = struct
   (* List queries *)
 
   let is_empty p = function
-  | `L (vs, l) -> vs = []
+  | `L (vs, _) -> vs = []
   | `A (_, _) as s -> err_exp_list p s
 
   let hd q p = function
-  | `L (v :: _, l) -> q ((Sexp.Nth 0, l) :: p) v
-  | `L ([], l) -> err_empty_list p l
+  | `L (v :: _, m) -> q ((Sexp.Nth 0, m.Sexp.l_loc) :: p) v
+  | `L ([], m) -> err_empty_list p m.Sexp.l_loc
   | `A (_, _) as s -> err_exp_list p s
 
   let tl q p = function
-  | `L (_ :: [], l) -> q p (`L ([], Tloc.to_end l))
-  | `L (_ :: (v :: _ as s), l) ->
-      let l = Tloc.restart ~at:(Tloc.to_start (Sexp.loc v)) l in
-      q p (`L (s, l))
-  | `L ([], l) -> err_empty_list p l
+  | `L (_ :: [], m) -> q p (`L ([], { Sexp.l_loc = Tloc.to_end m.Sexp.l_loc }))
+  | `L (_ :: (v :: _ as s), m) ->
+      let l_loc = Tloc.restart ~at:(Tloc.to_start (Sexp.loc v)) m.Sexp.l_loc in
+      q p (`L (s, { Sexp.l_loc}))
+  | `L ([], m) -> err_empty_list p m.Sexp.l_loc
   | `A (_, _) as s -> err_exp_list p s
 
   let list_find n p = function
   | `A (_, _) as s -> err_exp_list p s
-  | `L (vs, l) ->
+  | `L (vs, m) ->
       let k, vs = if n < 0 then -n - 1, List.rev vs else n, vs in
-      match List.nth vs k with v -> Ok v | exception Failure _ -> Error (vs, l)
+      match List.nth vs k with
+      | v -> Ok v | exception Failure _ -> Error (vs, m.Sexp.l_loc)
 
   let nth n q p s = match list_find n p s with
   | Ok v -> q ((Sexp.Nth n, Sexp.loc v) :: p) v
@@ -639,22 +651,22 @@ module Sexpq = struct
 
   let fold_list f q acc p = function
   | `A (_, _) as s -> err_exp_list p s
-  | `L (vs, l) ->
+  | `L (vs, m) ->
       let rec loop f q acc i l p = function
       | [] -> acc
       | v :: vs ->
           let acc = f (q ((Sexp.Nth i, l) :: p) v) acc in
           loop f q acc (i + 1) l p vs
       in
-      loop f q acc 0 l p vs
+      loop f q acc 0 m.Sexp.l_loc p vs
 
   let list q = map List.rev (fold_list List.cons q [])
 
   let lone_atom q p = function
   | `A (_, _)  as a -> q p a
   | `L ([`A _ as a], _) -> q p a
-  | `L ([], l) -> err_exp_fnd_raw "atom" p l "nothing"
-  | `L (_, l) -> err_exp_fnd_raw "an atom" p l "list"
+  | `L ([], m) -> err_exp_fnd_raw "atom" p m.Sexp.l_loc "nothing"
+  | `L (_, m) -> err_exp_fnd_raw "an atom" p m.Sexp.l_loc "list"
 
   (* Dictionaries *)
 
@@ -670,22 +682,24 @@ module Sexpq = struct
 
   let dict_find k p = function
   | `A (_, _) as s -> err_exp_dict p s
-  | `L (bs, dloc) ->
+  | `L (bs, m) ->
       let rec loop res = function
-      | `L (`A (a, _) :: vs, l) :: bs when String.equal a k ->
-          let vsl = match vs with
-          | [] -> Tloc.to_end l (* XXX problem how to span emptyness... *)
+      | `L (`A (a, _) :: vs, m) :: bs when String.equal a k ->
+          let l_loc = match vs with
+          | [] ->(* XXX problem how to span emptyness... *)
+              Tloc.to_end m.Sexp.l_loc
           | vs ->
-              Tloc.merge (Sexp.loc (List.hd vs)) (Sexp.loc List.(hd (rev vs)))
+                Tloc.merge (Sexp.loc (List.hd vs)) (Sexp.loc List.(hd (rev vs)))
           in
-          loop (Ok (l, `L (vs, vsl))) bs (* last one takes over so we cont. *)
+          let m' = { Sexp.l_loc = l_loc } in
+          loop (Ok (m, `L (vs, m'))) bs (* last one takes over so we cont. *)
       | [] -> res
       | _ :: bs -> loop res bs
       in
-      loop (Error (bs, dloc)) bs
+      loop (Error (bs, m.Sexp.l_loc)) bs
 
   let key k q p s = match dict_find k p s with
-  | Ok (kloc, v) -> q ((Sexp.Key k, kloc) :: p) v
+  | Ok (bmeta, v) -> q ((Sexp.Key k, bmeta.Sexp.l_loc) :: p) v
   | Error (bs, dloc) ->
       let dom = dict_dom bs in
       let keys = Sset.elements dom in
@@ -694,26 +708,28 @@ module Sexpq = struct
       errf p dloc "%a" did_you_mean (k, Tdec.err_suggest keys k)
 
   let find_key k q ~absent p s = match dict_find k p s with
-  | Ok (kloc, v) -> q ((Sexp.Key k, kloc) :: p) v
+  | Ok (bmeta, v) -> q ((Sexp.Key k, bmeta.Sexp.l_loc) :: p) v
   | Error (_, _) -> absent
 
   let key_dom ~validate p = function
   | `A (_, _) as s -> err_exp_dict p s
   | `L (bs, _) ->
       let add_key = match validate with
-      | None -> fun p loc k acc -> Sset.add k acc
+      | None -> fun p m k acc -> Sset.add k acc
       | Some dom ->
-          fun p loc k acc -> match Sset.mem k dom with
+          fun p m k acc -> match Sset.mem k dom with
           | true -> Sset.add k acc
           | false ->
               let keys = Sset.elements dom in
               let did_you_mean = Tdec.err_did_you_mean ~kind:"key" pp_key in
-              errf p loc "%a" did_you_mean (k, Tdec.err_suggest keys k)
+              errf p m.Sexp.a_loc "%a" did_you_mean (k, Tdec.err_suggest keys k)
       in
       let add_key validate acc = function
-      | `L (`A (k, kloc) :: v, _) -> add_key p kloc k acc
-      | `L ([], l) -> err_exp_fnd_raw "(atom ...) list" p l "empty list"
-      | `L (_, l) -> err_exp_fnd_raw "(atom ...) list" p l "malformed list"
+      | `L (`A (k, m) :: v, _) -> add_key p m k acc
+      | `L ([], m) ->
+          err_exp_fnd_raw "(atom ...) list" p m.Sexp.l_loc "empty list"
+      | `L (_, m) ->
+          err_exp_fnd_raw "(atom ...) list" p m.Sexp.l_loc "malformed list"
       | `A (_, _) as s -> err_exp_list p s
       in
       List.fold_left (add_key validate) Sset.empty bs
@@ -735,7 +751,7 @@ module Sexpq = struct
     | [] -> Sexp.loc s, []
     | Sexp.Key k :: is as missing ->
         begin match dict_find k p s with
-        | Ok (kloc, v) -> loop ((Sexp.Key k, kloc) :: p) v is
+        | Ok (bmeta, v) -> loop ((Sexp.Key k, bmeta.Sexp.l_loc) :: p) v is
         | Error (bs, dloc) -> dloc, List.rev missing
         end
     | Sexp.Nth i :: is as missing ->
@@ -749,15 +765,15 @@ module Sexpq = struct
   (* OCaml encoding queries *)
 
   let option q p = function (* TODO improve *)
-  | `A ("none", l) -> None
-  | `L ((`A ("some", _) :: v), l) ->
-      Some (q ((Sexp.Key "some", l) (* ? *) :: p) (`L (v, l)))
-  | `A (a, l) ->
-      err_exp_fnd_raw "none or (some ...)" p l (esc_atom a)
-  | `L ((`A (a, _) :: v), l) ->
-      err_exp_fnd_raw "none or (some ...)" p l ("(" ^ (esc_atom a))
-  | `L (_, l) ->
-      err_exp_fnd_raw "none or (some ...)" p l "an arbitrary list"
+  | `A ("none", m) -> None
+  | `L ((`A ("some", _) :: v), m) ->
+      Some (q ((Sexp.Key "some", m.Sexp.l_loc) (* ? *) :: p) (`L (v, m)))
+  | `A (a, m) ->
+      err_exp_fnd_raw "none or (some ...)" p m.Sexp.a_loc (esc_atom a)
+  | `L ((`A (a, _) :: v), m) ->
+      err_exp_fnd_raw "none or (some ...)" p m.Sexp.l_loc ("(" ^ (esc_atom a))
+  | `L (_, m) ->
+      err_exp_fnd_raw "none or (some ...)" p m.Sexp.l_loc "an arbitrary list"
 end
 
 (*---------------------------------------------------------------------------

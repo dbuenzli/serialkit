@@ -21,15 +21,26 @@
 (** S-expression definitions and codec. *)
 module Sexp : sig
 
-  (** {1:sexp S-expressions} *)
+  (** {1:meta Meta information} *)
 
   type loc = Serialk_text.Tloc.t
   (** The type for text locations. *)
 
-  val loc_nil : loc
-  (** [loc_nil] is an invalid input location. *)
+  type a_meta
+  (** The type for meta information about atoms. *)
 
-  type t = [ `A of string * loc | `L of t list * loc ]
+  type l_meta
+  (** The type for meta information about atoms. *)
+
+  val a_meta_nil : a_meta
+  (** [a_meta_nil] is parse information for non-parsed atoms. *)
+
+  val l_meta_nil : l_meta
+  (** [l_meta_nil] is parse information for non-parsed lists. *)
+
+  (** {1:sexp S-expressions} *)
+
+  type t = [ `A of string * a_meta | `L of t list * l_meta ]
   (** The type for generic s-expression representations. Either an atom or
       a list. *)
 
@@ -39,10 +50,10 @@ module Sexp : sig
   (** {1:cons Constructors} *)
 
   val atom : string -> t
-  (** [atom a] is [`A (a, loc_nil)]. *)
+  (** [atom a] is [`A (a, not_a_parse)]. *)
 
   val list : t list -> t
-  (** [list l] is [`L (l, loc_nil)]. *)
+  (** [list l] is [`L (l, not_l_parse)]. *)
 
   (** {1:access Accessors} *)
 
