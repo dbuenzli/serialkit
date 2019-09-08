@@ -63,7 +63,7 @@ let get file path =
   log_on_error ~exit:err_file (File.read file) @@ fun content ->
   log_on_error ~exit:err_sexp (Sexp.seq_of_string ~file content) @@ fun sexp ->
   match path with
-  | None -> Format.printf "@[%a@]@." Sexp.pp_seq sexp; 0
+  | None -> Format.printf "@[%a@]@." Sexp.pp_seq_layout sexp; 0
   | Some path ->
       let result = Sexpq.query (Sexpq.path path Sexpq.sexp) sexp in
       log_on_error ~exit:err_query result @@ fun result ->

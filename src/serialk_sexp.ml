@@ -6,6 +6,9 @@
 
 open Serialk_text
 
+(* FIXME quickly rehacked after a_meta and l_meta introduction.
+   This needs a cleanup. *)
+
 module Sexp = struct
 
   (* Parse information *)
@@ -13,14 +16,26 @@ module Sexp = struct
   type loc = Tloc.t
   let loc_nil = Tloc.nil
 
-  type a_meta = { a_loc : loc; a_quoted : bool }
-  let a_meta_nil = { a_loc = loc_nil; a_quoted = false }
+  type a_meta =
+    { a_loc : loc; a_quoted : string option; a_ws_before : string;
+      a_ws_after : string }
 
-  type l_meta = { l_loc : loc }
-  let l_meta_nil = { l_loc = loc_nil }
+  let a_meta_nil =
+    { a_loc = loc_nil; a_quoted = None; a_ws_before = ""; a_ws_after = ""; }
+
+  type l_meta =
+    { l_loc : loc; l_ws_before : string; l_ws_start : string;
+      l_ws_end : string; l_ws_after : string }
+
+  let l_meta_loc l_loc =
+    { l_loc; l_ws_before = ""; l_ws_start = ""; l_ws_end = "";
+      l_ws_after = ""; }
+
+  let l_meta_nil = l_meta_loc loc_nil
 
   (* S-expressions *)
 
+  (* FIXME this should become private *)
   type t = [ `A of string * a_meta | `L of t list * l_meta ]
   let loc = function `A (_, p) -> p.a_loc | `L (_, p) -> p.l_loc
 
@@ -139,8 +154,17 @@ module Sexp = struct
     let sbyte = Tdec.pos d and sline = Tdec.line d in
     let rec loop d = match dec_byte d with
     | 0x22 ->
+        let a = Tdec.tok_pop d in
+        let a_quoted =
+          (* TODO this should preserve escapes. It seems we are better
+             off to simply tokenize without escaping and then parse the
+             tok. But problem for errr report add an alternate raw token to
+             decoder ? *)
+          Some a
+        in
         let a_loc = Tdec.loc_to_here d ~sbyte ~sline in
-        Tdec.accept_byte d; `A (Tdec.tok_pop d, { a_loc; a_quoted = true })
+        let m = { a_loc; a_quoted; a_ws_before = ""; a_ws_after = "" } in
+        Tdec.accept_byte d; `A (a, m)
     | 0x5E -> dec_esc d; loop d
     | 0xFFFF -> err_eoi_qtoken d ~sbyte ~sline
     | _ -> Tdec.tok_accept_uchar d; loop d
@@ -156,7 +180,8 @@ module Sexp = struct
         let ebyte = Tdec.pos d - 1 in
         let eline = Tdec.line d in
         let a_loc = Tdec.loc d ~sbyte ~ebyte ~sline ~eline in
-        `A (Tdec.tok_pop d, { a_loc; a_quoted = false })
+        let m = { a_loc; a_quoted = None; a_ws_before = ""; a_ws_after = "" } in
+        `A (Tdec.tok_pop d, m)
     | 0x5E -> err_esc_char d
     | _ -> Tdec.tok_accept_uchar d; loop d
     in
@@ -167,12 +192,18 @@ module Sexp = struct
       begin match acc with
       | [] ->
           let l_loc = Tdec.loc d ~sbyte:0 ~ebyte:0 ~sline:(1,0) ~eline:(1,0) in
-          `L ([], { l_loc })
+          let m = { l_loc; l_ws_before = ""; l_ws_start = ""; l_ws_end = "";
+                    l_ws_after = "" } in
+          `L ([], m)
       | acc ->
           let eloc = loc (List.hd acc) in
           let acc = List.rev acc in
           let sloc = loc (List.hd acc) in
-          `L (acc, { l_loc = Tloc.merge sloc eloc })
+          let l_loc = Tloc.merge sloc eloc  in
+          let m = { l_loc; l_ws_before = ""; l_ws_start = ""; l_ws_end = "";
+                    l_ws_after = "" }
+          in
+          `L (acc, m)
       end
   | (sbyte, sline, _) :: locs -> err_eoi_list d ~sbyte ~sline
   | [] -> assert false
@@ -186,8 +217,11 @@ module Sexp = struct
       | (sbyte, sline, _) :: [] -> err_rpar d
       | (sbyte, sline, prev_acc) :: stack ->
           let ebyte = Tdec.pos d and eline = Tdec.line d in
-          let loc = Tdec.loc d ~sbyte ~ebyte ~sline ~eline in
-          let acc = `L (List.rev acc, { l_loc = loc }) :: prev_acc in
+          let l_loc = Tdec.loc d ~sbyte ~ebyte ~sline ~eline in
+          let m = { l_loc; l_ws_before = ""; l_ws_start = ""; l_ws_end = "";
+                    l_ws_after = "" }
+          in
+          let acc = `L (List.rev acc, m) :: prev_acc in
           Tdec.accept_byte d; dec_sexp_seq d stack acc
       | [] -> assert false
       end
@@ -313,21 +347,65 @@ module Sexp = struct
       let a = Buffer.contents b in
       Buffer.reset b; a
 
-  let _pp b ppf s =
-    let rec loop ~sp = function
-    | ((`A (a, _) :: ss) :: todo) ->
-        if sp then Format.pp_print_space ppf ();
-        Format.pp_print_string ppf (quote b a); loop ~sp:true (ss :: todo)
-    | ((`L (l, _) :: ss) :: todo) ->
-        if sp then Format.pp_print_space ppf ();
-        Format.fprintf ppf "@[<1>("; loop ~sp:false (l :: ss :: todo)
-    | ([] :: []) -> ()
-    | ([] :: todo) -> Format.fprintf ppf ")@]"; loop ~sp:true todo
-    | [] -> assert false
-    in
-    loop ~sp:false [[s]]
+  let _pp ~layout b ppf s = match layout with (* XXX cleanup *)
+  | false ->
+      let rec loop ~sp = function
+      | ((`A (a, _) :: ss) :: todo) ->
+          if sp then Format.pp_print_space ppf ();
+          Format.pp_print_string ppf (quote b a); loop ~sp:true (ss :: todo)
+      | ((`L (l, _) :: ss) :: todo) ->
+          if sp then Format.pp_print_space ppf ();
+          Format.fprintf ppf "@[<1>("; loop ~sp:false (l :: ss :: todo)
+      | ([] :: []) -> ()
+      | ([] :: todo) -> Format.fprintf ppf ")@]"; loop ~sp:true todo
+      | [] -> assert false
+      in
+      loop ~sp:false [[s]]
+  | true ->
+      (* FIXME do the layout entirely by hand to avoid Format suprises. *)
+      let rec loop ~sp = function
+      | ((`A (a, m) :: ss), me) :: todo ->
+          (if m.a_ws_before = ""
+           then (if sp then Format.pp_print_char ppf ' ')
+           else Format.pp_print_string ppf m.a_ws_before);
+          Format.pp_print_string ppf (quote b a);
+          Format.pp_print_string ppf m.a_ws_after;
+          loop ~sp:(m.a_ws_after = "") ((ss, me) :: todo)
+      | ((`L (l, m) :: ss), me) :: todo ->
+          (if m.l_ws_before = ""
+           then (if sp then Format.pp_print_char ppf ' ')
+           else Format.pp_print_string ppf m.l_ws_before);
+          Format.pp_print_char ppf '(';
+          Format.pp_print_string ppf m.l_ws_start;
+          loop ~sp:false ((l, m) :: (ss, me) :: todo)
+      | ([], _) :: [] -> ()
+      | ([], me) :: todo ->
+          Format.pp_print_string ppf me.l_ws_end;
+          Format.pp_print_char ppf ')';
+          Format.pp_print_string ppf me.l_ws_after;
+          loop ~sp:(me.l_ws_after = "") todo
+      | [] -> assert false
+      in
+      loop ~sp:false [([s], l_meta_nil)]
 
-  let pp ppf s = _pp (Buffer.create 255) ppf s
+  let pp ppf s = _pp ~layout:false (Buffer.create 255) ppf s
+  let pp_layout ppf s = _pp ~layout:true (Buffer.create 255) ppf s
+
+  let _pp_seq ~layout ppf = function
+  | `A _ as s -> pp ppf s
+  | `L (l, m)->
+      let pp = _pp ~layout (Buffer.create 255) in
+      match layout with
+      | true ->
+          Format.fprintf ppf "@[<v>%a@]" (Format.pp_print_list pp) l
+      | false ->
+          Format.fprintf ppf "@[<v>%s%s%a%s%s@]"
+            m.l_ws_before m.l_ws_start
+            (Format.pp_print_list pp) l
+            m.l_ws_end m.l_ws_after
+
+  let pp_seq ppf s = _pp_seq ~layout:false ppf s
+  let pp_seq_layout ppf s = _pp_seq ~layout:true ppf s
 
   let rec pp_dump ppf = function (* Not T.R *)
   | `A (a, m) -> Format.fprintf ppf "(A:%a %S)" Tloc.pp_dump m.a_loc  a
@@ -335,12 +413,6 @@ module Sexp = struct
       Format.fprintf ppf "@[<1>(L:%a " Tloc.pp_dump m.l_loc;
       Format.pp_print_list pp_dump ppf vs;
       Format.fprintf ppf ")@]"
-
-  let pp_seq ppf = function
-  | `A _ as s -> pp ppf s
-  | `L (l, _) ->
-      let pp = _pp (Buffer.create 255) in
-      Format.fprintf ppf "@[<v>%a@]" (Format.pp_print_list pp) l
 
   (* Paths *)
 
@@ -627,10 +699,11 @@ module Sexpq = struct
   | `A (_, _) as s -> err_exp_list p s
 
   let tl q p = function
-  | `L (_ :: [], m) -> q p (`L ([], { Sexp.l_loc = Tloc.to_end m.Sexp.l_loc }))
+  | `L (_ :: [], m) ->
+      q p (`L ([], Sexp.l_meta_loc m.Sexp.l_loc))
   | `L (_ :: (v :: _ as s), m) ->
       let l_loc = Tloc.restart ~at:(Tloc.to_start (Sexp.loc v)) m.Sexp.l_loc in
-      q p (`L (s, { Sexp.l_loc}))
+      q p (`L (s, Sexp.l_meta_loc l_loc))
   | `L ([], m) -> err_empty_list p m.Sexp.l_loc
   | `A (_, _) as s -> err_exp_list p s
 
@@ -691,7 +764,7 @@ module Sexpq = struct
           | vs ->
                 Tloc.merge (Sexp.loc (List.hd vs)) (Sexp.loc List.(hd (rev vs)))
           in
-          let m' = { Sexp.l_loc = l_loc } in
+          let m' = Sexp.l_meta_loc l_loc in
           loop (Ok (m, `L (vs, m'))) bs (* last one takes over so we cont. *)
       | [] -> res
       | _ :: bs -> loop res bs

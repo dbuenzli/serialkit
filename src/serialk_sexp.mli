@@ -18,12 +18,14 @@
 
 (** {1:api API} *)
 
+open Serialk_text
+
 (** S-expression definitions and codec. *)
 module Sexp : sig
 
   (** {1:meta Meta information} *)
 
-  type loc = Serialk_text.Tloc.t
+  type loc = Tloc.t
   (** The type for text locations. *)
 
   type a_meta
@@ -83,6 +85,9 @@ module Sexp : sig
       {b Warning.} Assumes all OCaml strings in the formatted value are
       UTF-8 encoded. *)
 
+  val pp_layout : Format.formatter -> t -> unit
+  (** [pp_layout ppf l] is like {!pp} but uses layout information. *)
+
   val pp_seq : Format.formatter -> t -> unit
   (** [pp_seq] formats an s-expression but if it is a list the
       outer list separators are not formatted in the output.
@@ -90,12 +95,15 @@ module Sexp : sig
       {b Warning.} Assumes all OCaml strings in the formatted value are
       UTF-8 encoded. *)
 
+  val pp_seq_layout : Format.formatter -> t -> unit
+  (** [pp_seq_layout] is like {!pp_seq} but uses layout information. *)
+
   val pp_dump : Format.formatter -> t -> unit
 
   (** {1:codec Codec} *)
 
   val seq_of_string :
-    ?file:Serialk_text.Tloc.fpath -> string -> (t, string) result
+    ?file:Tloc.fpath -> string -> (t, string) result
   (** [seq_of_string ?file s] parses a {e sequence} of s-expressions from
       [s]. [file] is the file for locations, defaults to ["-"]. The
       sequence is returned as a fake s-expression list that spans from
@@ -111,9 +119,9 @@ module Sexp : sig
       encoded. *)
 
   val seq_to_string : t -> string
-  (** [seq_to_string s] encodes [s] to a sequence of s-expressions. If [s]
+  (** [seq_to_string ~ws s] encodes [s] to a sequence of s-expressions. If [s]
       is an s-expression list this wrapping list is not syntactically
-      represented in the output (see also {!of_string}), use
+      represented in the output (see also {!seq_of_string}), use
       [to_string (list [l])] if you want to output [l] as a list.
 
       {b Warning.} Assumes all OCaml strings in [s] are UTF-8 encoded. *)
