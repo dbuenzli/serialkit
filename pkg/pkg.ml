@@ -9,4 +9,4 @@ let () =
        Pkg.mllib "src/serialk_json.mllib";
        Pkg.mllib "src/serialk_sexp.mllib";
        Pkg.test "test/test";
-       Pkg.test "test/sexpsk" ]
+       Pkg.bin "test/sexpsk" ]
