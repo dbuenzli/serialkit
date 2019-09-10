@@ -11,11 +11,14 @@
     Open this module to use it, this only introduces modules in your scope. *)
 
 (** JSON text definitions and codec. *)
+
+open Serialk_text
+
 module Json : sig
 
   (** {1:json JSON text} *)
 
-  type loc = Serialk_text.Tloc.t
+  type loc = Tloc.t
   (** The type for text locations. *)
 
   val loc_nil : loc
@@ -63,32 +66,32 @@ module Json : sig
 
   val to_null : t -> (unit, string) result
   (** [to_null j] extracts a null from [j]. If [j] is not a null an
-      error with the location formatted according to {!Serialk_tlex.Tloc.pp}
+      error with the location formatted according to {!Tloc.pp}
       is returned. *)
 
   val to_bool : t -> (bool, string) result
   (** [to_bool j] extracts a bool from [j]. If [j] is not a bool an
-      error with the location formatted according to {!Serialk_tlex.Tloc.pp}
+      error with the location formatted according to {!Tloc.pp}
       is returned. *)
 
   val to_float : t -> (float, string) result
   (** [to_float j] extracts a float from [j]. If [j] is not a float an
-      error with the location formatted according to {!Serialk_tlex.Tloc.pp}
+      error with the location formatted according to {!Tloc.pp}
       is returned. *)
 
   val to_string : t -> (string, string) result
   (** [to_string j] extracts a string from [j]. If [j] is not a string an
-      error with the location formatted according to {!Serialk_tlex.Tloc.pp}
+      error with the location formatted according to {!Tloc.pp}
       is returned. *)
 
   val to_array : t -> (t list, string) result
   (** [to_array j] extracts a array from [j]. If [j] is not a array an
-      error with the location formatted according to {!Serialk_tlex.Tloc.pp}
+      error with the location formatted according to {!Tloc.pp}
       is returned. *)
 
   val to_obj : t -> (mem list, string) result
   (** [to_obj j] extracts a array from [j]. If [j] is not a array an
-      error with the location formatted according to {!Serialk_tlex.Tloc.pp}
+      error with the location formatted according to {!Tloc.pp}
       is returned. *)
 
   val get_null : t -> unit
@@ -125,7 +128,7 @@ module Json : sig
 
   (** {1:codec Codec} *)
 
-  val of_string : ?file:Serialk_text.Tloc.fpath -> string -> (t, string) result
+  val of_string : ?file:Tloc.fpath -> string -> (t, string) result
   (** [of_string s] parses JSON text from [s] according to
       {{:https://tools.ietf.org/html/rfc8259}RFC8259} with the following
       limitations:

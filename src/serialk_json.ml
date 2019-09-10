@@ -4,8 +4,9 @@
    %%NAME%% %%VERSION%%
   ---------------------------------------------------------------------------*)
 
+open Serialk_text
+
 module Json = struct
-  open Serialk_text
 
   (* JSON text *)
 
@@ -364,7 +365,6 @@ end
 
 module Jsong = Json.G
 module Jsonq = struct
-  open Serialk_text
 
   module Sset = Set.Make (String)
   module Smap = Map.Make (String)
