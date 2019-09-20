@@ -451,7 +451,7 @@ module Sexp = struct
   let path_err_unexp_char i s = path_err i "unexpected character: %C" s.[i]
   let path_err_illegal_char i s = path_err i "illegal character here: %C" s.[i]
   let err_unexp i s =
-    path_err i "unexpected input: %S" (Tloc.string_with_index_range ~first:i s)
+    path_err i "unexpected input: %S" (Tloc.string_subrange ~first:i s)
 
   let path_parse_eoi s i max = if i > max then () else err_unexp i s
   let path_parse_index p s i max =
@@ -467,7 +467,7 @@ module Sexp = struct
       in
       loop stop s first max
     in
-    let idx = Tloc.string_with_index_range ~first ~last s in
+    let idx = Tloc.string_subrange ~first ~last s in
     if idx = "" then path_err first "illegal empty index" else
     match int_of_string idx with
     | exception Failure _ -> next, (Key idx) :: p

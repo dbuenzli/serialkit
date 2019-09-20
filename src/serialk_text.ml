@@ -146,7 +146,7 @@ module Tloc = struct
 
   (* Insertions and substitutions *)
 
-  let string_with_index_range ?(first = 0) ?last s =
+  let string_subrange ?(first = 0) ?last s =
     let max = String.length s - 1 in
     let last = match last with
     | None -> max

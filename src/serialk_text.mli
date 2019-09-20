@@ -95,8 +95,8 @@ module Tloc : sig
 
       Strictly speaking this doesn't belong here but here you go. *)
 
-  val string_with_index_range : ?first:int -> ?last:int -> string -> string
-  (** [string with_index_range ~first ~last s] are the consecutive bytes of [s]
+  val string_subrange : ?first:int -> ?last:int -> string -> string
+  (** [string_subrange ~first ~last s] are the consecutive bytes of [s]
       whose indices exist in the range \[[first];[last]\].
 
       [first] defaults to [0] and last to [String.length s - 1].
