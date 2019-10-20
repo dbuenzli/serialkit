@@ -204,7 +204,8 @@ let default =
   fst (List.hd cmds),
   Term.info "sexpsk" ~version:"%%VERSION%%" ~doc ~sdocs ~exits ~man
 
-let () = Term.(exit @@ eval_choice default cmds)
+let () =
+  if !Sys.interactive then () else Term.(exit @@ eval_choice default cmds)
 
 (*---------------------------------------------------------------------------
    Copyright (c) 2019 The serialk programmers
