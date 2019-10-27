@@ -54,18 +54,18 @@ let log_on_error ~exit:code r f = match r with
 let delete file path =
   let query = Sexpq.delete_at_path ~must_exist:false path in
   log_on_error ~exit:err_file (File.read file) @@ fun content ->
-  log_on_error ~exit:err_sexp (Sexp.seq_of_string ~file content) @@ fun sexp ->
-  log_on_error ~exit:err_query (Sexpq.query query sexp) @@ fun sexp ->
+  log_on_error ~exit:err_sexp (Sexp.seq_of_string' ~file content) @@ fun sexp ->
+  log_on_error ~exit:err_query (Sexpq.query' query sexp) @@ fun sexp ->
   Format.printf "@[%a@]" Sexp.pp_seq_layout sexp; 0
 
 let get file path =
   log_on_error ~exit:err_file (File.read file) @@ fun content ->
-  log_on_error ~exit:err_sexp (Sexp.seq_of_string ~file content) @@ fun sexp ->
+  log_on_error ~exit:err_sexp (Sexp.seq_of_string' ~file content) @@ fun sexp ->
   match path with
   | None -> Format.printf "@[%a@]" Sexp.pp_seq_layout sexp; 0
   | Some path ->
       let query = Sexpq.path path Sexpq.sexp in
-      log_on_error ~exit:err_query (Sexpq.query query sexp) @@ function
+      log_on_error ~exit:err_query (Sexpq.query' query sexp) @@ function
       | `A (a, _) | `L ([`A (a, _)], _) -> Format.printf "%s@." a; 0
       | `L _ as l -> Format.printf "@[%a@]@." Sexp.pp l; 0
 
@@ -78,15 +78,15 @@ let locs file =
       Format.pp_print_list pp_locs ppf vs
   in
   log_on_error ~exit:err_file (File.read file) @@ fun content ->
-  log_on_error ~exit:err_sexp (Sexp.seq_of_string ~file content) @@ fun sexp ->
+  log_on_error ~exit:err_sexp (Sexp.seq_of_string' ~file content) @@ fun sexp ->
   Format.printf "@[<v>%a@]@." pp_locs sexp; 0
 
 let set file caret v =
   log_on_error ~exit:err_file (File.read file) @@ fun content ->
-  log_on_error ~exit:err_sexp (Sexp.seq_of_string ~file content) @@ fun sexp ->
-  log_on_error ~exit:err_sexp (Sexp.seq_of_string v) @@ fun v ->
+  log_on_error ~exit:err_sexp (Sexp.seq_of_string' ~file content) @@ fun sexp ->
+  log_on_error ~exit:err_sexp (Sexp.seq_of_string' v) @@ fun v ->
   let query = Sexpq.splice_at_caret ~must_exist:false caret ~rep:v in
-  log_on_error ~exit:err_query (Sexpq.query query sexp) @@ fun sexp ->
+  log_on_error ~exit:err_query (Sexpq.query' query sexp) @@ fun sexp ->
   Format.printf "@[%a@]" Sexp.pp_seq_layout sexp; 0
 
 (* Command line interface *)
@@ -101,15 +101,13 @@ let path_arg =
   let parse s = match Sexp.path_of_string s with
   | Ok _ as v -> v | Error e -> Error (`Msg e)
   in
-  let pp = Sexp.pp_path in
-  Arg.conv ~docv:"SPATH" (parse, pp)
+  Arg.conv ~docv:"SPATH" (parse, Sexp.pp_path ())
 
 let caret_arg =
   let parse s = match Sexp.caret_of_string s with
   | Ok _ as v -> v | Error e -> Error (`Msg e)
   in
-  let pp = Sexp.pp_caret in
-  Arg.conv ~docv:"CARET" (parse, pp)
+  Arg.conv ~docv:"CARET" (parse, Sexp.pp_caret ())
 
 let exits =
   Term.exit_info err_file ~doc:"on file read errors" ::
