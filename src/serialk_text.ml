@@ -10,7 +10,6 @@ module Err_msg = struct
   let pp_sp = Format.pp_print_space
   let pp_nop _ () = ()
   let pp_any fmt ppf _ = pf ppf fmt
-
   let pp_op_enum op ?(empty = pp_nop) pp_v ppf = function
   | [] -> empty ppf ()
   | [v] -> pp_v ppf v
@@ -35,23 +34,20 @@ module Err_msg = struct
   | [] -> pp_unknown ~kind pp_v ppf v
   | hints -> pp_unknown ~kind pp_v ppf v; pp_sp ppf (); (hint pp_v) ppf hints
 
-  let min_by f a b = if f a <= f b then a else b
-  let max_by f a b = if f a <= f b then b else a
-
   let edit_distance s0 s1 =
-    let minimum a b c = min a (min b c) in
-    let s0 = min_by String.length s0 s1     (* row *)
-    and s1 = max_by String.length s0 s1 in  (* column *)
+    let minimum (a : int) (b : int) (c : int) : int = min a (min b c) in
+    let s0,s1 = if String.length s0 <= String.length s1 then s0,s1 else s1,s0 in
     let m = String.length s0 and n = String.length s1 in
-    let rec rows row0 row i =
-      if i > n then row0.(m) else begin
+    let rec rows row0 row i = match i > n with
+    | true -> row0.(m)
+    | false ->
         row.(0) <- i;
         for j = 1 to m do
           if s0.[j - 1] = s1.[i - 1] then row.(j) <- row0.(j - 1) else
-          row.(j) <-minimum (row0.(j - 1) + 1) (row0.(j) + 1) (row.(j - 1) + 1)
+          row.(j) <- minimum (row0.(j - 1) + 1) (row0.(j) + 1) (row.(j - 1) + 1)
         done;
         rows row row0 (i + 1)
-      end in
+    in
     rows (Array.init (m + 1) (fun x -> x)) (Array.make (m + 1) 0) 1
 
   let suggest ?(dist = 2) candidates s =
@@ -68,85 +64,101 @@ end
 (* Text locations *)
 
 module Tloc = struct
+
+  (* File paths *)
+
   type fpath = string
+  let no_file = "-"
   let pp_path = Format.pp_print_string
+
+  (* Byte and line positions. *)
 
   type pos = int
   type line = int
   type line_pos = line * pos
-  (* For lines we keep the byte position just after the newlinexs. It
-     editors are still expecting tools to compute visual columns which
-     is stupid.  By keeping these byte positions we can approximate
-     columns by subtracting the line byte position from the byte
-     location. This will only be correct on US-ASCII data though. Best
-     would be to be able to give them [sbyte] and [ebyte]. *)
+  (* For lines we keep the byte position just after the newlines. It
+     seems editors are still expecting tools to compute visual columns
+     which is stupid. By keeping these byte positions we can
+     approximate columns by subtracting the line byte position from
+     the byte location. This will only be correct on US-ASCII
+     data. Best would be to be able to give them byte ranges directly. *)
 
-  let l v = v
+  (* Text locations *)
+
   type t =
     { file : fpath;
-      sbyte : pos; ebyte : pos;
-      sline : pos * line; eline : pos * line }
+      first_byte : pos; first_line : pos * line;
+      last_byte : pos; last_line : pos * line }
 
-  let no_file = "-"
-  let v ~file ~sbyte ~ebyte ~sline ~eline = { file; sbyte; ebyte; sline; eline }
+  let v ~file ~first_byte ~first_line ~last_byte ~last_line =
+    { file; first_byte; last_byte; first_line; last_line }
+
   let file l = l.file
-  let sbyte l = l.sbyte
-  let ebyte l = l.ebyte
-  let sline l = l.sline
-  let eline l = l.eline
+  let first_byte l = l.first_byte
+  let last_byte l = l.last_byte
+  let first_line l = l.first_line
+  let last_line l = l.last_line
   let nil =
-    let pnil = -1 in
-    let lnil = (-1, pnil) in
-    v ~file:no_file ~sbyte:pnil ~ebyte:pnil ~sline:lnil ~eline:lnil
+    let pnil = -1 and lnil = (-1, -1) in
+    v "" pnil lnil pnil lnil
 
-  let merge l0 l1 =
-    let sbyte, sline =
-      if l0.sbyte < l1.sbyte then l0.sbyte, l0.sline else l1.sbyte, l1.sline
+  let to_first l =
+    v l.file l.first_byte l.first_line l.first_byte l.first_line
+
+  let to_last l =
+    v l.file l.last_byte l.last_line l.last_byte l.last_line
+
+  let span l0 l1 =
+    let first_byte, first_line =
+      if l0.first_byte < l1.first_byte
+      then l0.first_byte, l0.first_line
+      else l1.first_byte, l1.first_line
     in
-    let ebyte, eline =
-      if l0.ebyte < l1.ebyte then l1.ebyte, l1.eline else l0.ebyte, l0.eline
+    let last_byte, last_line, file =
+      if l0.last_byte < l1.last_byte
+      then l1.last_byte, l1.last_line, l1.file
+      else l0.last_byte, l0.last_line, l0.file
     in
-    v ~file:l0.file ~sbyte ~ebyte ~sline ~eline
+    v ~file:l0.file ~first_byte ~first_line ~last_byte ~last_line
 
-  let to_start l =
-    v ~file:l.file ~sbyte:l.sbyte ~ebyte:l.sbyte ~sline:l.sline ~eline:l.sline
+  let reloc ~first ~last =
+    v last.file first.first_byte first.first_line last.last_byte last.last_line
 
-  let to_end l =
-    v ~file:l.file ~sbyte:l.ebyte ~ebyte:l.ebyte ~sline:l.eline ~eline:l.eline
-
-  let restart ~at:s e =
-    v ~file:e.file ~sbyte:s.sbyte ~ebyte:e.ebyte ~sline:s.sline ~eline:e.eline
+  (* Formatters *)
 
   let pf = Format.fprintf
-  let pp_ocaml ppf l = match l.ebyte < 0 with
+  let pp_ocaml ppf l = match l.last_byte < 0 with
   | true -> pf ppf "File \"%a\", line n/a, characters n/a" pp_path l.file
   | false ->
-      let pp_lines ppf l = match fst l.sline = fst l.eline with
-      | true -> pf ppf "line %d" (fst l.sline)
-      | false -> pf ppf "lines %d-%d" (fst l.sline) (fst l.eline)
+      let pp_lines ppf l = match fst l.first_line = fst l.last_line with
+      | true -> pf ppf "line %d" (fst l.first_line)
+      | false -> pf ppf "lines %d-%d" (fst l.first_line) (fst l.last_line)
       in
       (* "characters" represent positions (insertion points) not columns *)
-      let pos_s = l.sbyte - snd l.sline in
-      let pos_e = l.ebyte - snd l.eline + 1 in
+      let pos_s = l.first_byte - snd l.first_line in
+      let pos_e = l.last_byte - snd l.last_line + 1 in
       pf ppf "File \"%a\", %a, characters %d-%d"
         pp_path l.file pp_lines l pos_s pos_e
 
-  let pp_gnu ppf l = match l.ebyte < 0 with
+  let pp_gnu ppf l = match l.last_byte < 0 with
   | true -> pf ppf "%a:" pp_path l.file
   | false ->
       let pp_lines ppf l =
-        let col_s = l.sbyte - snd l.sline + 1 in
-        let col_e = l.ebyte - snd l.eline + 1 in
-        match fst l.sline = fst l.eline with
-        | true ->  pf ppf "%d.%d-%d" (fst l.sline) col_s col_e
+        let col_s = l.first_byte - snd l.first_line + 1 in
+        let col_e = l.last_byte - snd l.last_line + 1 in
+        match fst l.first_line = fst l.last_line with
+        | true ->  pf ppf "%d.%d-%d" (fst l.first_line) col_s col_e
         | false ->
-            pf ppf "%d.%d-%d.%d" (fst l.sline) col_s (fst l.eline) col_e
+            pf ppf "%d.%d-%d.%d"
+              (fst l.first_line) col_s (fst l.last_line) col_e
       in
       pf ppf "%a:%a" pp_path l.file pp_lines l
 
   let pp_dump ppf l =
     pf ppf "[bytes %d;%d][lines %d;%d][lbytes %d;%d]"
-      l.sbyte l.ebyte (fst l.sline) (fst l.eline) (snd l.sline) (snd l.eline)
+      l.first_byte l.last_byte
+      (fst l.first_line) (fst l.last_line)
+      (snd l.first_line) (snd l.last_line)
 
   let pp = pp_gnu
 
@@ -238,7 +250,7 @@ module Tdec = struct
     { file : Tloc.fpath; i : string; tok : Buffer.t;
       mutable pos : int; mutable line : int; mutable line_pos : int; }
 
-  let create ?(file = Tloc.no_file) i =
+  let from_string ?(file = Tloc.no_file) i =
     { file; i; tok = Buffer.create 255; pos = 0; line = 1; line_pos = 0 }
 
   (* Location *)
@@ -247,39 +259,39 @@ module Tdec = struct
   let pos d = d.pos
   let line d = d.line, d.line_pos
 
-  let loc d ~sbyte ~ebyte ~sline ~eline =
-    Tloc.v ~file:d.file ~sbyte ~ebyte ~sline ~eline
+  let loc d ~first_byte ~last_byte ~first_line ~last_line =
+    Tloc.v ~file:d.file ~first_byte ~last_byte ~first_line ~last_line
 
-  let loc_to_here d ~sbyte ~sline =
-    loc d ~sbyte ~ebyte:d.pos ~sline ~eline:(d.line, d.line_pos)
+  let loc_to_here d ~first_byte ~first_line =
+    let last_line = (d.line, d.line_pos) in
+    loc d ~first_byte ~last_byte:d.pos ~first_line ~last_line
 
-  let loc_here d = loc_to_here d ~sbyte:d.pos ~sline:(d.line, d.line_pos)
+  let loc_here d =
+    loc_to_here d ~first_byte:d.pos ~first_line:(d.line, d.line_pos)
 
   (* Errors *)
 
   exception Err of Tloc.t * string
 
   let err loc msg = raise_notrace (Err (loc, msg))
-  let err_to_here d ~sbyte ~sline fmt =
-    Format.kasprintf (err (loc_to_here d ~sbyte ~sline)) fmt
+  let err_to_here d ~first_byte ~first_line fmt =
+    Format.kasprintf (err (loc_to_here d ~first_byte ~first_line)) fmt
 
   let err_here d fmt = Format.kasprintf (err (loc_here d)) fmt
   let err_suggest = Err_msg.suggest
 
   (* Lexing *)
 
-  let incr_line d = match d.i.[d.pos] with (* assert (not (eoi d)) *)
+  let[@inline] incr_line d = match d.i.[d.pos] with (* assert (not (eoi d)) *)
   | '\r' -> d.line <- d.line + 1; d.line_pos <- d.pos + 1
   | '\n' ->
       (if d.pos = 0 || d.i.[d.pos - 1] <> '\r' then d.line <- d.line + 1);
       d.line_pos <- d.pos + 1;
   | _ -> ()
-  [@@ ocaml.inline]
 
-  let eoi d = d.pos >= String.length d.i [@@ ocaml.inline]
-  let byte d = if eoi d then 0xFFFF else Char.code d.i.[d.pos] [@@ ocaml.inline]
-  let accept_byte d = incr_line d; d.pos <- d.pos + 1
-  [@@ ocaml.inline]
+  let[@inline] eoi d = d.pos >= String.length d.i
+  let[@inline] byte d = if eoi d then 0xFFFF else Char.code d.i.[d.pos]
+  let[@inline] accept_byte d = incr_line d; d.pos <- d.pos + 1
 
   let accept_utf_8 accept d =
     let err d = match byte d with
@@ -298,7 +310,8 @@ module Tdec = struct
             accept d;
             if (byte d - 0xA0 < 0xBF - 0xA0) then accept d else err d;
             accept_tail d
-        | L3_E1_EC_or_EE_EF -> accept d; accept_tail d; accept_tail d
+        | L3_E1_EC_or_EE_EF ->
+            accept d; accept_tail d; accept_tail d
         | L3_ED ->
             accept d;
             if (byte d - 0x80 < 0x9F - 0x80) then accept d else err d;
@@ -319,38 +332,16 @@ module Tdec = struct
 
   (* Tokenizer *)
 
-  let tok_reset d = Buffer.reset d.tok [@@ ocaml.inline]
-  let tok_pop d = let t = Buffer.contents d.tok in tok_reset d; t
-  [@@ ocaml.inline]
+  let[@inline] lex_clear d = Buffer.clear d.tok
+  let[@inline] lex_pop d = let t = Buffer.contents d.tok in lex_clear d; t
+  let[@inline] lex_add_byte d b = Buffer.add_char d.tok (Char.chr b)
+  let[@inline] lex_add_bytes d s = Buffer.add_string d.tok s
+  let[@inline] lex_add_char d c = Buffer.add_char d.tok c
+  let[@inline] lex_add_uchar d u = Buffer.add_utf_8_uchar d.tok u
+  let[@inline] lex_accept_byte d =
+    Buffer.add_char d.tok d.i.[d.pos]; accept_byte d
 
-  let tok_accept_byte d =
-    Buffer.add_char d.tok d.i.[d.pos]; accept_byte d; [@@ ocaml.inline]
-
-  let tok_accept_uchar d = accept_utf_8 tok_accept_byte d [@@ ocaml.inline]
-  let tok_add_byte d b = Buffer.add_char d.tok (Char.chr b) [@@ ocaml.inline]
-  let tok_add_bytes d s = Buffer.add_string d.tok s [@@ ocaml.inline]
-  let tok_add_char d c = Buffer.add_char d.tok c [@@ ocaml.inline]
-
-  let buffer_add_uchar b u = match Uchar.to_int u with
-  (* XXX From 4.06 use Buffer.add_utf_8_uchar *)
-  | u when u < 0 -> assert false
-  | u when u <= 0x007F ->
-      Buffer.add_char b (Char.unsafe_chr u)
-  | u when u <= 0x07FF ->
-      Buffer.add_char b (Char.unsafe_chr (0xC0 lor (u lsr 6)));
-      Buffer.add_char b (Char.unsafe_chr (0x80 lor (u land 0x3F)));
-  | u when u <= 0xFFFF ->
-      Buffer.add_char b (Char.unsafe_chr (0xE0 lor (u lsr 12)));
-      Buffer.add_char b (Char.unsafe_chr (0x80 lor ((u lsr 6) land 0x3F)));
-      Buffer.add_char b (Char.unsafe_chr (0x80 lor (u land 0x3F)));
-  | u when u <= 0x10FFFF ->
-      Buffer.add_char b (Char.unsafe_chr (0xF0 lor (u lsr 18)));
-      Buffer.add_char b (Char.unsafe_chr (0x80 lor ((u lsr 12) land 0x3F)));
-      Buffer.add_char b (Char.unsafe_chr (0x80 lor ((u lsr 6) land 0x3F)));
-      Buffer.add_char b (Char.unsafe_chr (0x80 lor (u land 0x3F)))
-  | _ -> assert false
-
-  let tok_add_uchar d u = buffer_add_uchar d.tok u
+  let[@inline] lex_accept_uchar d = accept_utf_8 lex_accept_byte d
 end
 
 (*---------------------------------------------------------------------------

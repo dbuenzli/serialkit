@@ -23,7 +23,7 @@ package "json" (
 )
 
 package "sexp" (
-  description = "JSON support"
+  description = "S-expression support"
   version = "%%VERSION_NUM%%"
   requires = "serialk.text"
   archive(byte) = "serialk_sexp.cma"

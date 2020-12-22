@@ -76,7 +76,7 @@ module Json = struct
   let treset d = Buffer.reset d.t [@@ ocaml.inline]
   let taccept d = Buffer.add_char d.t d.i.[d.pos]; accept d; [@@ ocaml.inline]
   let taddc d c = Buffer.add_char d.t c [@@ ocaml.inline]
-  let taddu d u = Tdec.buffer_add_uchar d.t u
+  let taddu d u = Buffer.add_utf_8_uchar d.t u
   let token d = Buffer.contents d.t [@@ ocaml.inline]
   let eoi d = d.pos = String.length d.i [@@ ocaml.inline]
   let byte d = match eoi d with
@@ -603,9 +603,9 @@ module Jsonq = struct
 
   let tl q p = function
   | `A ([], l) -> err_empty_array p l
-  | `A (_ :: [], l) -> q p (`A ([], Tloc.to_end l))
+  | `A (_ :: [], l) -> q p (`A ([], Tloc.to_last l))
   | `A (_ :: (v :: _ as a), l) ->
-      let l = Tloc.restart ~at:(Tloc.to_start (Json.loc v)) l in
+      let l = Tloc.reloc ~first:(Tloc.to_first (Json.loc v)) ~last:l in
       q p (`A (a, l))
   | j -> err_exp_array p j
 

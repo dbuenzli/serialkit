@@ -84,10 +84,10 @@ module Sexp = struct
   | Ok _ as v -> v | Error e -> Error (Format.asprintf "%a" pp_error e)
 
   let curr_char d = (* TODO better escaping (this is for error reports) *)
-    Tdec.tok_reset d; Tdec.tok_accept_uchar d; Tdec.tok_pop d
+    Tdec.lex_clear d; Tdec.lex_accept_uchar d; Tdec.lex_pop d
 
-  let err_eoi msg d ~sbyte ~sline =
-    Tdec.err_to_here d ~sbyte ~sline "end of input: %s" msg
+  let err_eoi msg d ~first_byte ~first_line =
+    Tdec.err_to_here d ~first_byte ~first_line "end of input: %s" msg
 
   let err_eoi_qtoken = err_eoi "unclosed quoted atom"
   let err_eoi_list = err_eoi "unclosed list"
@@ -95,19 +95,19 @@ module Sexp = struct
   let err_illegal_uchar d b = Tdec.err_here d "illegal character U+%04X" b
   let err_rpar d = Tdec.err_here d "mismatched right parenthesis ')'"
 
-  let err_esc_exp_hex d ~sbyte ~sline =
-    Tdec.err_to_here d ~sbyte ~sline
+  let err_esc_exp_hex d ~first_byte ~first_line =
+    Tdec.err_to_here d ~first_byte ~first_line
       "%s: illegal Unicode escape: expected an hexadecimal digit" (curr_char d)
 
-  let err_esc_uchar d ~sbyte ~sline code =
-    Tdec.err_to_here d ~sbyte ~sline
+  let err_esc_uchar d ~first_byte ~first_line code =
+    Tdec.err_to_here d ~first_byte ~first_line
       "illegal Unicode escape: %04X is not a Unicode character" code
 
-  let err_esc_illegal d ~sbyte ~sline pre =
-    Tdec.err_to_here d ~sbyte ~sline "%s%s: illegal escape" pre (curr_char d)
+  let err_esc_illegal d ~first_byte ~first_line pre =
+    Tdec.err_to_here d ~first_byte ~first_line "%s%s: illegal escape" pre (curr_char d)
 
-  let err_esc_uchar_end d ~sbyte ~sline =
-    Tdec.err_to_here d ~sbyte ~sline
+  let err_esc_uchar_end d ~first_byte ~first_line =
+    Tdec.err_to_here d ~first_byte ~first_line
       "%s: illegal Unicode escape: expected end of escape '}'"
       (curr_char d)
 
@@ -126,57 +126,57 @@ module Sexp = struct
 
   let dec_skip_as_tok d = (* skip white and comment, but tokenize it *)
     let rec skip d = match dec_byte d with
-    | 0x20 | 0x09 | 0x0A | 0x0B | 0x0C | 0x0D -> Tdec.tok_accept_byte d; skip d
-    | 0x3B (* ; *) -> Tdec.tok_accept_byte d; skip_comment d
+    | 0x20 | 0x09 | 0x0A | 0x0B | 0x0C | 0x0D -> Tdec.lex_accept_byte d; skip d
+    | 0x3B (* ; *) -> Tdec.lex_accept_byte d; skip_comment d
     | _ -> ()
     and skip_comment d = match dec_byte d with
-    | 0x0A | 0x0D -> Tdec.tok_accept_byte d; skip d
+    | 0x0A | 0x0D -> Tdec.lex_accept_byte d; skip d
     | 0xFFFF -> ()
-    | _ -> Tdec.tok_accept_uchar d; skip_comment d
+    | _ -> Tdec.lex_accept_uchar d; skip_comment d
     in
     skip d
 
-  let rec dec_uchar_esc d ~sbyte ~sline =
+  let rec dec_uchar_esc d ~first_byte ~first_line =
     match (Tdec.accept_byte d; dec_byte d) with
     | 0x7B (* { *)  ->
         let rec loop d acc count = match (Tdec.accept_byte d; dec_byte d) with
-        | c when count > 6 -> err_esc_uchar_end d ~sbyte ~sline
+        | c when count > 6 -> err_esc_uchar_end d ~first_byte ~first_line
         | c when 0x30 <= c && c <= 0x39 ->
             loop d (acc * 16 + c - 0x30) (count + 1)
         | c when 0x41 <= c && c <= 0x46 ->
             loop d (acc * 16 + c - 0x37) (count + 1)
         | c when 0x61 <= c && c <= 0x66 ->
             loop d (acc * 16 + c - 0x57) (count + 1)
-        | 0x7D when count = 0 -> err_esc_exp_hex d ~sbyte ~sline
+        | 0x7D when count = 0 -> err_esc_exp_hex d ~first_byte ~first_line
         | 0x7D when not (Uchar.is_valid acc) ->
-            err_esc_uchar d ~sbyte ~sline acc
+            err_esc_uchar d ~first_byte ~first_line acc
         | 0x7D ->
-            Tdec.accept_byte d; Tdec.tok_add_uchar d (Uchar.unsafe_of_int acc);
-        | 0xFFFF -> err_eoi_esc d ~sbyte ~sline
-        | _ -> err_esc_exp_hex d ~sbyte ~sline
+            Tdec.accept_byte d; Tdec.lex_add_uchar d (Uchar.unsafe_of_int acc);
+        | 0xFFFF -> err_eoi_esc d ~first_byte ~first_line
+        | _ -> err_esc_exp_hex d ~first_byte ~first_line
         in
         loop d 0 0
-    | 0xFFFF -> err_eoi_esc d ~sbyte ~sline
-    | c -> err_esc_illegal d ~sbyte ~sline "^u"
+    | 0xFFFF -> err_eoi_esc d ~first_byte ~first_line
+    | c -> err_esc_illegal d ~first_byte ~first_line "^u"
 
   let rec dec_esc d =
-    let sbyte = Tdec.pos d and sline = Tdec.line d in
+    let first_byte = Tdec.pos d and first_line = Tdec.line d in
     match (Tdec.accept_byte d; dec_byte d) with
-    | 0x22 -> Tdec.accept_byte d; Tdec.tok_add_char d '"'
-    | 0x5E -> Tdec.accept_byte d; Tdec.tok_add_char d '^'
-    | 0x6E -> Tdec.accept_byte d; Tdec.tok_add_char d '\n'
-    | 0x72 -> Tdec.accept_byte d; Tdec.tok_add_char d '\r'
-    | 0x20 -> Tdec.accept_byte d; Tdec.tok_add_char d ' '
-    | 0x75 -> dec_uchar_esc d ~sbyte ~sline
+    | 0x22 -> Tdec.accept_byte d; Tdec.lex_add_char d '"'
+    | 0x5E -> Tdec.accept_byte d; Tdec.lex_add_char d '^'
+    | 0x6E -> Tdec.accept_byte d; Tdec.lex_add_char d '\n'
+    | 0x72 -> Tdec.accept_byte d; Tdec.lex_add_char d '\r'
+    | 0x20 -> Tdec.accept_byte d; Tdec.lex_add_char d ' '
+    | 0x75 -> dec_uchar_esc d ~first_byte ~first_line
     | 0x0A | 0x0D -> (* continuation line *) skip_white d
-    | 0xFFFF -> err_eoi_esc d ~sbyte ~sline
-    | _ -> err_esc_illegal d ~sbyte ~sline "^"
+    | 0xFFFF -> err_eoi_esc d ~first_byte ~first_line
+    | _ -> err_esc_illegal d ~first_byte ~first_line "^"
 
   let rec dec_qtoken d ws =
-    let sbyte = Tdec.pos d and sline = Tdec.line d in
+    let first_byte = Tdec.pos d and first_line = Tdec.line d in
     let rec loop d = match dec_byte d with
     | 0x22 ->
-        let a = Tdec.tok_pop d in
+        let a = Tdec.lex_pop d in
         let a_quoted =
           (* TODO this should preserve escapes. It seems we are better
              off to simply tokenize without escaping and then parse the
@@ -184,33 +184,33 @@ module Sexp = struct
              decoder ? *)
           Some a
         in
-        let a_loc = Tdec.loc_to_here d ~sbyte ~sline in
+        let a_loc = Tdec.loc_to_here d ~first_byte ~first_line in
         let m = { a_loc; a_quoted; a_before = ws; a_after = "" } in
         Tdec.accept_byte d; `A (a, m)
     | 0x5E -> dec_esc d; loop d
-    | 0xFFFF -> err_eoi_qtoken d ~sbyte ~sline
-    | _ -> Tdec.tok_accept_uchar d; loop d
+    | 0xFFFF -> err_eoi_qtoken d ~first_byte ~first_line
+    | _ -> Tdec.lex_accept_uchar d; loop d
     in
     Tdec.accept_byte d; loop d
 
   and dec_token d ws =
-    let sbyte = Tdec.pos d and sline = Tdec.line d in
+    let first_byte = Tdec.pos d and first_line = Tdec.line d in
     let rec loop d = match dec_byte d with
     | 0x28 | 0x29 | 0x3B | 0x22
     | 0x20 | 0x09 | 0x0A | 0x0B | 0x0C | 0x0D
     | 0xFFFF ->
-        let ebyte = Tdec.pos d - 1 in
-        let eline = Tdec.line d in
-        let a_loc = Tdec.loc d ~sbyte ~ebyte ~sline ~eline in
+        let last_byte = Tdec.pos d - 1 in
+        let last_line = Tdec.line d in
+        let a_loc = Tdec.loc d ~first_byte ~last_byte ~first_line ~last_line in
         let m = { a_loc; a_quoted = None; a_before = ws; a_after = "" } in
-        `A (Tdec.tok_pop d, m)
+        `A (Tdec.lex_pop d, m)
     | 0x5E -> err_esc_char d
-    | _ -> Tdec.tok_accept_uchar d; loop d
+    | _ -> Tdec.lex_accept_uchar d; loop d
     in
     loop d
 
   and dec_eoi d stack ews acc = match stack with
-  | (sbyte, sline, sws, _) :: [] ->
+  | (first_byte, first_line, sws, _) :: [] ->
       begin match acc with
       | [] ->
           (* There's a tricky bit here. If sws is a comment followed
@@ -220,7 +220,10 @@ module Sexp = struct
              pp layout without update changing anything so we simply
              put the comment in l_after. This means that edits
              will occur before the comment. *)
-          let l_loc = Tdec.loc d ~sbyte:0 ~ebyte:0 ~sline:(1,0) ~eline:(1,0) in
+          let l_loc =
+            Tdec.loc d
+              ~first_byte:0 ~last_byte:0 ~first_line:(1,0) ~last_line:(1,0)
+          in
           let l_after = String.concat "" [sws; ews] in
           let m = { l_loc; l_before = ""; l_start = ""; l_end = ""; l_after } in
           `L ([], m)
@@ -228,27 +231,30 @@ module Sexp = struct
           let eloc = loc (List.hd acc) in
           let acc = List.rev acc in
           let sloc = loc (List.hd acc) in
-          let l_loc = Tloc.merge sloc eloc  in
+          let l_loc = Tloc.span sloc eloc  in
           let m =
             { l_loc; l_before = sws; l_start = ""; l_end = ""; l_after = ews }
           in
           `L (acc, m)
       end
-  | (sbyte, sline, _, _) :: locs -> err_eoi_list d ~sbyte ~sline
+  | (first_byte, first_line, _, _) :: locs ->
+      err_eoi_list d ~first_byte ~first_line
   | [] -> assert false
 
   and dec_sexp_seq d stack acc =
-    let ws = (dec_skip_as_tok d; Tdec.tok_pop d) in
+    let ws = (dec_skip_as_tok d; Tdec.lex_pop d) in
     match dec_byte d with
     | 0x28 ->
         let stack = (Tdec.pos d, Tdec.line d, ws, acc) :: stack in
         Tdec.accept_byte d; dec_sexp_seq d stack []
     | 0x29 ->
         begin match stack with
-        | (sbyte, sline, _, _) :: [] -> err_rpar d
-        | (sbyte, sline, l_before, prev_acc) :: stack ->
-            let ebyte = Tdec.pos d and eline = Tdec.line d in
-            let l_loc = Tdec.loc d ~sbyte ~ebyte ~sline ~eline in
+        | (first_byte, first_line, _, _) :: [] -> err_rpar d
+        | (first_byte, first_line, l_before, prev_acc) :: stack ->
+            let last_byte = Tdec.pos d and last_line = Tdec.line d in
+            let l_loc =
+              Tdec.loc d ~first_byte ~last_byte ~first_line ~last_line
+            in
             let m = { l_loc; l_before; l_start = ""; l_end = ws; l_after = "" }
             in
             let acc = `L (List.rev acc, m) :: prev_acc in
@@ -261,8 +267,8 @@ module Sexp = struct
 
   let seq_of_string ?(file = Tloc.no_file) s =
     try
-      let d = Tdec.create ~file s in
-      let before = (dec_skip_as_tok d; Tdec.tok_pop d) in
+      let d = Tdec.from_string ~file s in
+      let before = (dec_skip_as_tok d; Tdec.lex_pop d) in
       Ok (dec_sexp_seq d [(0, (1, 0), before, [])] [])
     with Tdec.Err (loc, msg) -> Error (msg, loc)
 
@@ -743,7 +749,8 @@ module Sexpq = struct
   let tl q p = function
   | `L (_ :: [], m) -> q p (`L ([], Sexp.l_meta_loc m.Sexp.l_loc))
   | `L (_ :: (v :: _ as s), m) ->
-      let l_loc = Tloc.restart ~at:(Tloc.to_start (Sexp.loc v)) m.Sexp.l_loc in
+      let first = Tloc.to_first (Sexp.loc v) in
+      let l_loc = Tloc.reloc ~first ~last:m.Sexp.l_loc in
       q p (`L (s, Sexp.l_meta_loc l_loc))
   | `L ([], m) -> err_empty_list p m.Sexp.l_loc
   | `A (_, _) as s -> err_exp_list p s
@@ -806,8 +813,8 @@ module Sexpq = struct
 
   let key_value_fake_list vs bmeta =
     let fake_list_loc bmeta = function
-    | [] -> (* XXX problem span emptyness... *) Tloc.to_end bmeta.Sexp.l_loc
-    | vs -> Tloc.merge (Sexp.loc (List.hd vs)) (Sexp.loc List.(hd (rev vs)))
+    | [] -> (* XXX problem span emptyness... *) Tloc.to_last bmeta.Sexp.l_loc
+    | vs -> Tloc.span (Sexp.loc (List.hd vs)) (Sexp.loc List.(hd (rev vs)))
     in
     `L (vs, Sexp.l_meta_loc (fake_list_loc bmeta vs))
 

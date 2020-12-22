@@ -12,7 +12,7 @@ constraint may be lifted in the future.
 {1:api API}
 
 {!modules:
+Serialk_text
 Serialk_json
 Serialk_sexp
-Serialk_text
 }
