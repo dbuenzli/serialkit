@@ -16,7 +16,7 @@ module Tloc : sig
   (** The type for file paths. *)
 
   val no_file : fpath
-  (** [no_file] is ["-"]. A file path used when no file is specified. *)
+  (** [no_file] is ["-"]. A file path to use when there isn't one. *)
 
   (** {1:byte Byte and line positions} *)
 
@@ -77,13 +77,13 @@ module Tloc : sig
       position. *)
 
   val span : t -> t -> t
-  (** [span l0 l1] is the span from the smallest location of [l0] and [l1]
-      to the greatest location of [l0] and [l1]. The file path is taken
-      from the greatest location. *)
+  (** [span l0 l1] is the span from the smallest location of [l0] and
+      [l1] to the greatest location of [l0] and [l1]. The file path is
+      taken from the greatest location. *)
 
   val reloc : first:t -> last:t -> t
-  (** [reloc ~first ~last] uses the first position of [first], the last
-      position of [last] and the file of [last]. *)
+  (** [reloc ~first ~last] uses the first position of [first], the
+      last position of [last] and the file of [last]. *)
 
   (** {1:fmt Formatters} *)
 
@@ -126,7 +126,8 @@ end
 (** UTF-8 text decoder.
 
     A decoder inputs {e valid} UTF-8 text, maintains {{!Tloc}text locations}
-    according to advances in the input and has a lexeme buffer for lexing. *)
+    according to advances in the input and has a {{!lex}lexeme buffer} for
+    lexing. *)
 module Tdec : sig
 
   (** {1:dec Decoder} *)
@@ -147,30 +148,30 @@ module Tdec : sig
   (** [pos d] is the current decoding byte position. *)
 
   val line : t -> Tloc.line_pos
-  (** [line d] is the current line position. Lines increment as
+  (** [line d] is the current decoding line position. Lines increment as
       described {{!Tloc.line}here}. *)
 
   val loc :
     t -> first_byte:Tloc.pos -> last_byte:Tloc.pos ->
     first_line:Tloc.line_pos -> last_line:Tloc.line_pos -> Tloc.t
-  (** [loc d ~first_byte ~last_bytex ~first_line ~last_line] is a
-      location with the correponding position ranges and file according to
-      {!file}. *)
+  (** [loc d ~first_byte ~last_bytex ~first_line ~last_line] is
+      {!Tloc.v} using [file d] for the file. *)
 
   val loc_to_here :
     t -> first_byte:Tloc.pos -> first_line:Tloc.line_pos -> Tloc.t
   (** [loc_to_here d ~first_byte ~first_line] is a location that starts at
       [~first_byte] and [~first_line] and ends at the current decoding
-      position. *)
+      position as determined by {!pos} and {!line}. *)
 
   val loc_here : t -> Tloc.t
   (** [loc_here d] is like {!loc_to_here} with the start position
-      at the current decoding position. *)
+      at the current decoding position as determined by
+      {!pos} and {!line}. *)
 
   (** {1:err Errors} *)
 
   exception Err of Tloc.t * string
-  (** The exception for errors. A location and an error message *)
+  (** The exception for errors. A location and an english error message *)
 
   val err : Tloc.t -> string -> 'b
   (** [err loc msg] raises [Err (loc, msg)] with no trace. *)
@@ -187,9 +188,9 @@ module Tdec : sig
   (** {2:err_msg Error message helpers} *)
 
   val err_suggest : ?dist:int -> string list -> string -> string list
-  (** [err_suggest ~dist candidates s] are the elements of [candidates]
-      whose {{!edit_distance}edit distance} is the smallest to [s] and
-      at most at a distance of [dist] of [s] (defaults to [2]). If
+  (** [err_suggest ~dist candidates s] are the elements of
+      [candidates] whose edit distance is the smallest to [s] and at
+      most at a distance of [dist] of [s] (defaults to [2]). If
       multiple results are returned the order of [candidates] is
       preserved. *)
 
@@ -235,15 +236,15 @@ module Tdec : sig
 
   val accept_uchar : t -> unit
   (** [accept_uchar d] accepts an UTF-8 encoded character starting at
-      the current position and moves to the byte after it. Raises
+      the current position and moves to the byte location after it. Raises
       {!Err} in case of UTF-8 decoding error. *)
 
   val accept_byte : t -> unit
   (** [accept_byte d] accepts the byte at the current position and
-      moves to the next byte. {b Warning.} Faster than {!accept_uchar}
-      but the client needs to make sure it's not accepting invalid
-      UTF-8 data, i.e. that [byte d] is an US-ASCII encoded character
-      (i.e. [<= 0x7F]). *)
+      moves to the byte location after it. {b Warning.} Faster than
+      {!accept_uchar} but the client needs to make sure it's not
+      accepting invalid UTF-8 data, i.e. that [byte d] is an US-ASCII
+      encoded character (i.e. [<= 0x7F]). *)
 
   (** {1:lex Lexeme buffer} *)
 
@@ -267,13 +268,13 @@ module Tdec : sig
       to the lexen. *)
 
   val lex_accept_uchar : t -> unit
-  (** [lex_accept_uchar d] is like {!accept_uchar} but also
-      adds the UTF-8 byte sequence to the lexeme. *)
+  (** [lex_accept_uchar d] is like {!accept_uchar} but also adds the
+      UTF-8 byte sequence to the lexeme. *)
 
   val lex_accept_byte : t -> unit
-  (** [lex_accept_byte d] is like {!accept_byte} but also
-      adds the byte to the lexeme. {b Warning.} {!accept_byte}'s
-      warning applies. *)
+  (** [lex_accept_byte d] is like {!accept_byte} but also adds the
+      byte to the lexeme. {b Warning.} {!accept_byte}'s warning
+      applies. *)
 end
 
 (*---------------------------------------------------------------------------

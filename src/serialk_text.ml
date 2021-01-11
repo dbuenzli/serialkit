@@ -119,7 +119,7 @@ module Tloc = struct
       then l1.last_byte, l1.last_line, l1.file
       else l0.last_byte, l0.last_line, l0.file
     in
-    v ~file:l0.file ~first_byte ~first_line ~last_byte ~last_line
+    v ~file ~first_byte ~first_line ~last_byte ~last_line
 
   let reloc ~first ~last =
     v last.file first.first_byte first.first_line last.last_byte last.last_line
@@ -258,7 +258,6 @@ module Tdec = struct
   let file d = d.file
   let pos d = d.pos
   let line d = d.line, d.line_pos
-
   let loc d ~first_byte ~last_byte ~first_line ~last_line =
     Tloc.v ~file:d.file ~first_byte ~last_byte ~first_line ~last_line
 

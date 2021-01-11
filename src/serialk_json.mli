@@ -9,10 +9,9 @@
 
     Open this module to use it, this only introduces modules in your scope. *)
 
-(** JSON text definitions and codec. *)
-
 open Serialk_text
 
+(** JSON text definitions and codec. *)
 module Json : sig
 
   (** {1:json JSON text} *)
