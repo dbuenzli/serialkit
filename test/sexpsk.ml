@@ -202,7 +202,8 @@ let default =
   Term.info "sexpsk" ~version:"%%VERSION%%" ~doc ~sdocs ~exits ~man
 
 let () =
-  if !Sys.interactive then () else Term.(exit @@ eval_choice default cmds)
+  if !Sys.interactive then () else
+  Term.(exit_status @@ eval_choice default cmds)
 
 (*---------------------------------------------------------------------------
    Copyright (c) 2019 The serialk programmers
