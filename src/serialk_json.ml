@@ -19,7 +19,7 @@ module Json = struct
   | `A of t list * loc
   | `O of mem list * loc ]
 
-  let loc_nil = Tloc.nil
+  let loc_nil = Tloc.none
   let loc = function
   | `Null l | `Bool (_, l) | `Float (_, l) | `String (_, l) | `A (_, l)
   | `O (_, l) -> l
@@ -300,7 +300,7 @@ module Json = struct
     skip_ws d;
     v
 
-  let of_string ?(file = Tloc.no_file) s =
+  let of_string ?(file = Tloc.file_none) s =
     try
       let d = decoder s in
       let v = parse_value d in

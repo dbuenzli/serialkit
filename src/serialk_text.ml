@@ -68,29 +68,41 @@ module Tloc = struct
   (* File paths *)
 
   type fpath = string
-  let no_file = "-"
+  let file_none = "-"
   let pp_path = Format.pp_print_string
 
-  (* Byte and line positions. *)
+  (* Byte positions *)
 
-  type pos = int
-  type line = int
+  type pos = int (* zero-based *)
+  let pos_none = -1
+
+  (* Lines *)
+
+  type line = int (* one-based *)
+  let line_none = -1
+
+  (* Line positions
+
+     We keep the byte position of the first element on the line which
+     may not exist and be equal to the text length if the input ends
+     with an empty newline. Editors are expecting tools to compute
+     visual columns which is not a very good idea. By keeping these
+     byte positions we can approximate columns by subtracting the line
+     byte position from the byte location. This will only be correct
+     on US-ASCII data. Best would be to be able to give them byte
+     ranges directly. *)
+
   type line_pos = line * pos
-  (* For lines we keep the byte position just after the newlines. It
-     seems editors are still expecting tools to compute visual columns
-     which is stupid. By keeping these byte positions we can
-     approximate columns by subtracting the line byte position from
-     the byte location. This will only be correct on US-ASCII
-     data. Best would be to be able to give them byte ranges directly. *)
+  let line_pos_none = line_none, pos_none
 
   (* Text locations *)
 
   type t =
     { file : fpath;
-      first_byte : pos; first_line : pos * line;
-      last_byte : pos; last_line : pos * line }
+      first_byte : pos; last_byte : pos;
+      first_line : line_pos; last_line : line_pos }
 
-  let v ~file ~first_byte ~first_line ~last_byte ~last_line =
+  let v ~file ~first_byte ~last_byte ~first_line ~last_line =
     { file; first_byte; last_byte; first_line; last_line }
 
   let file l = l.file
@@ -98,15 +110,33 @@ module Tloc = struct
   let last_byte l = l.last_byte
   let first_line l = l.first_line
   let last_line l = l.last_line
-  let nil =
-    let pnil = -1 and lnil = (-1, -1) in
-    v "" pnil lnil pnil lnil
+  let none =
+    let first_byte = pos_none and last_byte = pos_none in
+    let first_line = line_pos_none and last_line = line_pos_none in
+    v ~file:file_none ~first_byte ~last_byte ~first_line ~last_line
 
-  let to_first l =
-    v l.file l.first_byte l.first_line l.first_byte l.first_line
+  (* Predicates and comparisons *)
 
-  let to_last l =
-    v l.file l.last_byte l.last_line l.last_byte l.last_line
+  let is_none l = l.first_byte < 0
+  let is_empty l = l.first_byte > l.last_byte
+  let equal l0 l1 =
+    String.equal l0.file l1.file &&
+    Int.equal l0.first_byte l1.first_byte &&
+    Int.equal l0.last_byte l1.last_byte
+
+  let compare l0 l1 =
+    let c = String.compare l0.file l1.file in
+    if c <> 0 then c else
+    let c = Int.compare l0.first_byte l1.first_byte in
+    if c <> 0 then c else
+    Int.compare l0.last_byte l1.last_byte
+
+  (* Shrink and stretch *)
+
+  let to_first l = v l.file l.first_byte l.first_byte l.first_line l.first_line
+  let to_last l = v l.file l.last_byte l.last_byte l.last_line l.last_line
+  let before l = v l.file l.first_byte pos_none l.first_line line_pos_none
+  let after l = v l.file (l.first_byte + 1) pos_none l.last_line line_pos_none
 
   let span l0 l1 =
     let first_byte, first_line =
@@ -122,7 +152,7 @@ module Tloc = struct
     v ~file ~first_byte ~first_line ~last_byte ~last_line
 
   let reloc ~first ~last =
-    v last.file first.first_byte first.first_line last.last_byte last.last_line
+    v last.file first.first_byte last.last_byte first.first_line last.last_line
 
   (* Formatters *)
 
@@ -154,13 +184,12 @@ module Tloc = struct
       in
       pf ppf "%a:%a" pp_path l.file pp_lines l
 
-  let pp_dump ppf l =
-    pf ppf "[bytes %d;%d][lines %d;%d][lbytes %d;%d]"
-      l.first_byte l.last_byte
-      (fst l.first_line) (fst l.last_line)
-      (snd l.first_line) (snd l.last_line)
-
   let pp = pp_gnu
+
+  let pp_dump ppf l =
+    pf ppf "file:%s bytes:%d-%d lines:%d-%d lines-bytes:%d-%d]"
+      l.file l.first_byte l.last_byte (fst l.first_line) (fst l.last_line)
+      (snd l.first_line) (snd l.last_line)
 
   (* Insertions and substitutions *)
 
@@ -250,7 +279,7 @@ module Tdec = struct
     { file : Tloc.fpath; i : string; tok : Buffer.t;
       mutable pos : int; mutable line : int; mutable line_pos : int; }
 
-  let from_string ?(file = Tloc.no_file) i =
+  let from_string ?(file = Tloc.file_none) i =
     { file; i; tok = Buffer.create 255; pos = 0; line = 1; line_pos = 0 }
 
   (* Location *)

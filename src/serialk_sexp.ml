@@ -35,7 +35,7 @@ module Sexp = struct
   let l_meta_loc l_loc =
     { l_loc; l_before = ""; l_start = ""; l_end = ""; l_after = "" }
 
-  let loc_nil = Tloc.nil
+  let loc_nil = Tloc.none
   let a_meta_nil = a_meta_loc loc_nil
   let l_meta_nil = l_meta_loc loc_nil
 
@@ -265,7 +265,7 @@ module Sexp = struct
     | 0x22 -> dec_sexp_seq d stack (dec_qtoken d ws :: acc)
     | _ -> dec_sexp_seq d stack (dec_token d ws :: acc)
 
-  let seq_of_string ?(file = Tloc.no_file) s =
+  let seq_of_string ?(file = Tloc.file_none) s =
     try
       let d = Tdec.from_string ~file s in
       let before = (dec_skip_as_tok d; Tdec.lex_pop d) in

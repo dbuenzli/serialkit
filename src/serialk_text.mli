@@ -7,7 +7,10 @@
 
     Open this module to use it defines only module in your scope. *)
 
-(** Text locations. *)
+(** Text locations.
+
+    A data structure to represent the byte and line positions of ranges
+    of text in the UTF-8 text of a file. *)
 module Tloc : sig
 
   (** {1:fpath File paths} *)
@@ -15,13 +18,22 @@ module Tloc : sig
   type fpath = string
   (** The type for file paths. *)
 
-  val no_file : fpath
-  (** [no_file] is ["-"]. A file path to use when there isn't one. *)
+  val file_none : fpath
+  (** [file_none] is ["-"]. A file path to use when there is none. *)
 
-  (** {1:byte Byte and line positions} *)
+  (** {1:pos Positions} *)
+
+  (** {2:byte_pos Byte positions} *)
 
   type pos = int
-  (** The type for zero-based, absolute, byte positions in text. *)
+  (** The type for zero-based, absolute, byte positions in text. If
+      the text has [n] bytes, [0] is the first position and [n-1] is
+      the last position. *)
+
+  val pos_none : int
+  (** [pos_none] is [-1]. A position to use when there is none. *)
+
+  (** {2:lines Lines} *)
 
   type line = int
   (** The type for one-based, line numbers in the text. Lines
@@ -29,63 +41,109 @@ module Tloc : sig
       (U+000A), a carriage return ['\r'] (U+000D) or a carriage return and a
       line feed ["\r\n"] (<U+000D,U+000A>). *)
 
+  val line_none : int
+  (** [line_none] is [-1]. A line number to use when there is none. *)
+
+  (** {2:line_pos Line positions} *)
+
   type line_pos = line * pos
   (** The type for line positions. The line number and the byte
       position of the first element on the line. The later is the byte
-      position after the {{!line}newline}. If the text ends with a newline
-      that position is equal to the text's length, it is not a valid byte
-      index. *)
+      position after the {{!line}newline}. If the text ends with a
+      newline that position is equal to the text's length, it is not a
+      valid byte {e index} of the input string. *)
+
+  val line_pos_none : line_pos
+  (** [line_pos_none] is [(line_none, pos_none)]. *)
 
   (** {1:tloc Text locations} *)
 
   type t
-  (** The type for text locations. A text location is a range of byte
-      positions and the lines on which they occur in the UTF-8 encoded
-      text of a particular file. *)
+  (** The type for text locations. A text location is an inclusive range of
+      {{!byte_pos}byte positions} and the {{!line_pos}line positions} on which
+      they occur in the UTF-8 encoding of a given file.
 
-  val nil : t
-  (** [nil] is an invalid text location. *)
+      If the first byte equals the last byte the range contains
+      exactly that byte. If the first byte is greater than the last
+      byte this represents an insertion point before the first byte. *)
+
+  val none : t
+  (** [none] is an position to use when there is none. *)
 
   val v :
-    file:fpath -> first_byte:pos -> first_line:line_pos -> last_byte:pos ->
+    file:fpath -> first_byte:pos -> last_byte:pos -> first_line:line_pos ->
     last_line:line_pos -> t
-  (** [v ~file ~first_byte ~first_line ~last_byte ~last_line] is a text
+  (** [v ~file ~first_byte ~last_byte ~first_line ~last_line] is a text
       location with the given arguments, see corresponding accessors for
-      the semantics. If you don't have a file use {!no_file}. *)
+      the semantics. If you don't have a file use {!file_none}. *)
 
   val file : t -> fpath
   (** [file l] is [l]'s file. *)
 
   val first_byte : t -> pos
-  (** [first_byte l] is [l]'s first byte. *)
+  (** [first_byte l] is [l]'s first byte. Irrelevant if {!is_none} is
+      [true]. *)
 
   val last_byte : t -> pos
-  (** [last_byte l] is [l]'s last byte. *)
+  (** [last_byte l] is [l]'s last byte. Irrelevant if {!is_none} or {!is_empty}
+      is [true].*)
 
   val first_line : t -> line_pos
-  (** [first_line l] is the line position on which [first_byte l] lies. *)
+  (** [first_line l] is the line position on which [first_byte l] lies.
+      Irrelevant if {!is_none} is [true].*)
 
   val last_line : t -> line_pos
-  (** [last_line l] is the line position on which [last_byte l] lies. *)
+  (** [last_line l] is the line position on which [last_byte l] lies.
+      Irrelevant if {!is_none} or {!is_empty} is [true].*)
+
+  (** {2:preds Predicates and comparisons} *)
+
+  val is_none : t -> bool
+  (** [is_none t] is [true] iff [first_byte < 0]. *)
+
+  val is_empty : t -> bool
+  (** [is_empty t] is [true] iff [first_byte t > last_byte t]. *)
+
+  val equal : t -> t -> bool
+  (** [equal t0 t1] is [true] iff [t0] and [t1] are equal. This checks
+      that {!file}, {!first_byte} and {!last_byte} are equal. Line information
+      is ignored. *)
+
+  val compare : t -> t -> int
+  (** [compare t0 t1] orders [t0] and [t1]. The order is compatible
+      with {!equal}. Comparison starts with {!file}, follows with {!first_byte}
+      and ends, if needed, with {!last_byte}. Line information is ignored. *)
+
+  (** {2:shrink_and_stretch Shrink and stretch} *)
 
   val to_first : t -> t
   (** [to_first l] has both first and last positions set to [l]'s first
-      position. *)
+      position. The range spans {!first_byte}. *)
 
   val to_last : t -> t
   (** [to_last l] has both first and last positions set to [l]'s last
-      position. *)
+      position. The range spans {!last_byte}. *)
+
+  val before : t -> t
+  (** [before t] is the {{!is_empty}empty} text location starting at
+      {!first_byte}. *)
+
+  val after : t -> t
+  (** [after t] is the empty {{!is_empty}empty} location starting at
+      [last_byte t + 1]; note that at the end of input this may be an
+      invalid byte {e index}. The {!first_line} and {!last_line} of the
+      result is [last_line t]. *)
 
   val span : t -> t -> t
-  (** [span l0 l1] is the span from the smallest location of [l0] and
-      [l1] to the greatest location of [l0] and [l1]. The file path is
-      taken from the greatest location. *)
+  (** [span l0 l1] is the span from the smallest byte position of [l0] and
+      [l1] to the largest byte position of [l0] and [l1]. The file path is
+      taken from the greatest byte position. *)
 
   val reloc : first:t -> last:t -> t
   (** [reloc ~first ~last] uses the first position of [first], the
       last position of [last] and the file of [last]. *)
 
-  (** {1:fmt Formatters} *)
+  (** {2:fmt Formatting} *)
 
   val pp_ocaml : Format.formatter -> t -> unit
   (** [pp_ocaml] formats location like the OCaml compiler. *)
@@ -101,7 +159,7 @@ module Tloc : sig
   val pp_dump : Format.formatter -> t -> unit
   (** [pp_dump] formats raw data for debugging. *)
 
-  (** {1:text Substitutions and insertions}
+  (** {1:text String substitutions and insertions}
 
       Strictly speaking this doesn't belong here but here you go. *)
 
