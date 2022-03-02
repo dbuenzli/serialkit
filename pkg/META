@@ -1,33 +1,9 @@
 description = "Satisfies OCaml serialization impulsions"
 version = "%%VERSION_NUM%%"
+requires = "Serialization formats toolkit"
+version = "%%VERSION_NUM%%"
 requires = ""
-
-package "text" (
-  description = "Text support"
-  version = "%%VERSION_NUM%%"
-  requires = ""
-  archive(byte) = "serialk_text.cma"
-  archive(native) = "serialk_text.cmxa"
-  plugin(byte) = "serialk_text.cma"
-  plugin(native) = "serialk_text.cmxs"
-)
-
-package "json" (
-  description = "JSON support"
-  version = "%%VERSION_NUM%%"
-  requires = "serialk.text"
-  archive(byte) = "serialk_json.cma"
-  archive(native) = "serialk_json.cmxa"
-  plugin(byte) = "serialk_json.cma"
-  plugin(native) = "serialk_json.cmxs"
-)
-
-package "sexp" (
-  description = "S-expression support"
-  version = "%%VERSION_NUM%%"
-  requires = "serialk.text"
-  archive(byte) = "serialk_sexp.cma"
-  archive(native) = "serialk_sexp.cmxa"
-  plugin(byte) = "serialk_sexp.cma"
-  plugin(native) = "serialk_sexp.cmxs"
-)
+archive(byte) = "serialkit.cma"
+archive(native) = "serialkit.cmxa"
+plugin(byte) = "serialkit.cma"
+plugin(native) = "serialkit.cmxs"

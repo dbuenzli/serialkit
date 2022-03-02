@@ -1,5 +1,5 @@
 PKG cmdliner b0.kit
 S src
 S test
+S tool
 B _b0/**
-B _build/**

@@ -1,15 +1,15 @@
 (*---------------------------------------------------------------------------
-   Copyright (c) 2016 The b0 programmers. All rights reserved.
+   Copyright (c) 2016 The serialkit programmers. All rights reserved.
    SPDX-License-Identifier: ISC
   ---------------------------------------------------------------------------*)
 
-open Serialk_text
+open Serialkit_text
 
 module Json = struct
 
   (* JSON text *)
 
-  type loc = Tloc.t
+  type loc = Textloc.t
   type mem = (string * loc) * t
   and t =
   [ `Null of loc
@@ -19,7 +19,7 @@ module Json = struct
   | `A of t list * loc
   | `O of mem list * loc ]
 
-  let loc_nil = Tloc.none
+  let loc_nil = Textloc.none
   let loc = function
   | `Null l | `Bool (_, l) | `Float (_, l) | `String (_, l) | `A (_, l)
   | `O (_, l) -> l
@@ -41,7 +41,7 @@ module Json = struct
   | `String _ -> "string" | `A _ -> "array" | `O _ -> "object"
 
   let err_exp exp fnd =
-    Format.asprintf "%a: %s but expected %s" Tloc.pp (loc fnd) (kind fnd) exp
+    Format.asprintf "%a: %s but expected %s" Textloc.pp (loc fnd) (kind fnd) exp
 
   let err_exp_null = err_exp "null"
   let err_exp_bool = err_exp "bool"
@@ -300,7 +300,7 @@ module Json = struct
     skip_ws d;
     v
 
-  let of_string ?(file = Tloc.file_none) s =
+  let of_string ?(file = Textloc.file_none) s =
     try
       let d = decoder s in
       let v = parse_value d in
@@ -453,14 +453,14 @@ module Jsonq = struct
 
   let path_to_trace ?(pp_mem = pp_mem) p =
     let seg = function
-    | `A, l -> Format.asprintf "%a: in array" Tloc.pp l
-    | `O m, l -> Format.asprintf "%a: in key %a" Tloc.pp l pp_mem m
+    | `A, l -> Format.asprintf "%a: in array" Textloc.pp l
+    | `O m, l -> Format.asprintf "%a: in key %a" Textloc.pp l pp_mem m
     in
     String.concat "\n" (List.map seg p)
 
   (* Errors *)
 
-  exception Err of path * Tloc.t * string
+  exception Err of path * Textloc.t * string
 
   let err p l msg = raise_notrace (Err (p, l, msg))
   let errf p l fmt = Format.kasprintf (err p l) fmt
@@ -482,10 +482,10 @@ module Jsonq = struct
         (String.split_on_char '\n' s)
     in
     match p with
-    | [] -> Format.asprintf "%a:@\n%a" Tloc.pp loc pp_lines msg
+    | [] -> Format.asprintf "%a:@\n%a" Textloc.pp loc pp_lines msg
     | p ->
         Format.asprintf "%a:@\n%a@\n  @[%a@]"
-          Tloc.pp loc pp_lines msg pp_lines (path_to_trace p)
+          Textloc.pp loc pp_lines msg pp_lines (path_to_trace p)
 
   (* Queries *)
 
@@ -568,13 +568,13 @@ module Jsonq = struct
   | `String (s, _) when Sset.mem s ss -> s
   | `String (s, l) ->
       let ss = Sset.elements ss in
-      let hint, ss = match Tdec.err_suggest ss s with
-      | [] -> Tdec.pp_must_be, ss
-      | ss -> Tdec.pp_did_you_mean, ss
+      let hint, ss = match Textdec.err_suggest ss s with
+      | [] -> Textdec.pp_must_be, ss
+      | ss -> Textdec.pp_did_you_mean, ss
       in
       let kind ppf () = Format.pp_print_string ppf kind in
       let pp_v = Format.pp_print_string in
-      errf p l "%a" (Tdec.pp_unknown' ~kind pp_v ~hint) (s, ss)
+      errf p l "%a" (Textdec.pp_unknown' ~kind pp_v ~hint) (s, ss)
   | j -> err_exp kind p j
 
   let enum_map ~kind sm p = function
@@ -583,13 +583,13 @@ module Jsonq = struct
       | v -> v
       | exception Not_found ->
           let ss = Smap.fold (fun k _ acc -> k :: acc) sm [] in
-          let hint, ss = match Tdec.err_suggest ss s with
-          | [] -> Tdec.pp_must_be, ss
-          | ss -> Tdec.pp_did_you_mean, ss
+          let hint, ss = match Textdec.err_suggest ss s with
+          | [] -> Textdec.pp_must_be, ss
+          | ss -> Textdec.pp_did_you_mean, ss
           in
           let kind ppf () = Format.pp_print_string ppf kind in
           let pp_v = Format.pp_print_string in
-          errf p l "%a" (Tdec.pp_unknown' ~kind pp_v ~hint) (s, ss)
+          errf p l "%a" (Textdec.pp_unknown' ~kind pp_v ~hint) (s, ss)
       end
   | j -> err_exp kind p j
 
@@ -603,9 +603,9 @@ module Jsonq = struct
 
   let tl q p = function
   | `A ([], l) -> err_empty_array p l
-  | `A (_ :: [], l) -> q p (`A ([], Tloc.to_last l))
+  | `A (_ :: [], l) -> q p (`A ([], Textloc.to_last l))
   | `A (_ :: (v :: _ as a), l) ->
-      let l = Tloc.reloc ~first:(Tloc.to_first (Json.loc v)) ~last:l in
+      let l = Textloc.reloc ~first:(Textloc.to_first (Json.loc v)) ~last:l in
       q p (`A (a, l))
   | j -> err_exp_array p j
 
@@ -665,13 +665,13 @@ module Jsonq = struct
           | true -> Sset.add n acc
           | false ->
               let ns = Sset.elements dom in
-              let hint, ss = match Tdec.err_suggest ns n with
-              | [] -> Tdec.pp_must_be, ns
-              | ss -> Tdec.pp_did_you_mean, ss
+              let hint, ss = match Textdec.err_suggest ns n with
+              | [] -> Textdec.pp_must_be, ns
+              | ss -> Textdec.pp_did_you_mean, ss
               in
               let kind ppf () = Format.pp_print_string ppf "member" in
               let pp_v = Format.pp_print_string in
-              errf p l "%a" (Tdec.pp_unknown' ~kind pp_v ~hint) (n, ss)
+              errf p l "%a" (Textdec.pp_unknown' ~kind pp_v ~hint) (n, ss)
       in
       List.fold_left add_mem Sset.empty ms
   | j -> err_exp_obj p j

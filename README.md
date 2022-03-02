@@ -1,29 +1,32 @@
-serialk — Satisfies OCaml serialization impulsions
--------------------------------------------------------------------------------
+serialkit — Serialization formats toolkit for OCaml
+===================================================
 %%VERSION%%
 
-serialk provides easy to use OCaml APIs to query, edit and
-(de)serialize data formats. JSON text and s-expressions are 
-supported for now.
+Serialkit provides easy to use OCaml APIs to query, update and
+generate data in generic serialization data formats.
 
-serialk is distributed under the ISC license and has no dependencies.
+The supported data formats are JSON text, s-expressions and TOML.
 
-Homepage: https://erratique.ch/software/serialk  
+Serialkit is distributed under the ISC license. It has no dependencies.
+
+Homepage: <https://erratique.ch/software/serialkit>
 
 ## Installation
 
-serialk can be installed with `opam`:
+serialkit can be installed with `opam`:
 
-    opam install serialk
+    opam install serialkit
+    opam install serialkit cmdliner # for the serialkit tool
 
 If you don't use `opam` consult the [`opam`](opam) file for build
 instructions.
 
 ## Documentation
 
-The documentation and API reference is generated from the source
-interfaces. It can be consulted [online][doc] or via `odig doc
-serialk`.
+The documentation can be consulted [online] or via `odig doc serialkit`.
 
-[doc]: https://erratique.ch/software/serialk/doc
+Questions are welcome but better asked on the [OCaml forum] than on
+the issue tracker. 
 
+[online]: https://erratique.ch/software/serialkit/doc
+[OCaml forum]: https://discuss.ocaml.org/

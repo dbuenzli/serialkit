@@ -1,18 +1,18 @@
-{0 Serialk {%html: <span class="version">%%VERSION%%</span>%}}
+{0 Serialkit {%html: <span class="version">%%VERSION%%</span>%}}
 
-Serialk provides easy to use APIs to query, edit and (de)serialize
-data formats.  {{!Serialk_json}JSON text} and
-{{!Serialk_sexp}s-expressions} are supported for now.
+Serialkit provides easy to use APIs to query, edit and (de)serialize
+data serialisation formats.
 
-{b Warning.} Serialk works on complete, in-memory, representations of the
-data. If you need streaming support pass your way. Besides at the
-moment IO is performed directly from and to OCaml strings but that
-constraint may be lifted in the future.
+{b Warning.} Serialkit codecs work on complete, in-memory,
+representations of the data. If you need streaming support pass your
+way. Besides at the moment IO is performed directly from and to OCaml
+strings but that constraint may be lifted in the future.
 
-{1:api API}
+{1:lib Library [serialkit]}
 
 {!modules:
-Serialk_text
-Serialk_json
-Serialk_sexp
+Serialkit_text
+Serialkit_json
+Serialkit_sexp
+Serialkit_toml
 }

@@ -4,9 +4,7 @@
 open Topkg
 
 let () =
-  Pkg.describe "serialk" @@ fun c ->
-  Ok [ Pkg.mllib "src/serialk_text.mllib";
-       Pkg.mllib "src/serialk_json.mllib";
-       Pkg.mllib "src/serialk_sexp.mllib";
+  Pkg.describe "serialkit" @@ fun c ->
+  Ok [ Pkg.mllib "src/serialkit.mllib";
        Pkg.test "test/test";
-       Pkg.bin "test/sexpsk" ]
+       Pkg.bin "tool/cmd_main" ~dst:"serialkit" ]

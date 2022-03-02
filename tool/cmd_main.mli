@@ -1,4 +1,4 @@
 (*---------------------------------------------------------------------------
-   Copyright (c) 2019 The serialkit programmers. All rights reserved.
+   Copyright (c) 2023 The cmarkit programmers. All rights reserved.
    SPDX-License-Identifier: ISC
   ---------------------------------------------------------------------------*)

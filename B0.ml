@@ -4,62 +4,88 @@ open Result.Syntax
 (* OCaml library names *)
 
 let cmdliner = B0_ocaml.libname "cmdliner"
-let serialk_text = B0_ocaml.libname "serialk.text"
-let serialk_json = B0_ocaml.libname "serialk.json"
-let serialk_sexp = B0_ocaml.libname "serialk.sexp"
+let serialkit = B0_ocaml.libname "serialkit"
 
 (* Libraries *)
 
-let mod_src m =
-  let file m ext = Fpath.(v "src" / Fmt.str "%s%s" m ext) in
-  [ `File (file m ".mli"); `File (file m ".ml") ]
-
-let serialk_text_lib =
-  let srcs = mod_src "serialk_text" in
-  B0_ocaml.lib serialk_text ~doc:"Serialk text support" ~srcs ~requires:[]
-
-let serialk_json_lib =
-  let srcs = mod_src "serialk_json" in
-  let requires = [serialk_text] in
-  B0_ocaml.lib serialk_json ~doc:"Serialk JSON support" ~srcs ~requires
-
-let serialk_sexp_lib =
-  let srcs = mod_src "serialk_sexp" in
-  let requires = [serialk_text] in
-  B0_ocaml.lib serialk_sexp ~doc:"Serialk sexp support" ~srcs ~requires
+let serialkit_lib =
+  let srcs = [ `Dir (Fpath.v "src") ] in
+  let name = "serialkit-lib" in
+  B0_ocaml.lib ~name serialkit ~doc:"serialkit library" ~srcs ~requires:[]
 
 (* Tools *)
 
-let sexpsk_tool =
-  let srcs = Fpath.[`File (v "test/sexpsk.ml")] in
-  let requires = [cmdliner; serialk_text; serialk_sexp] in
-  B0_ocaml.exe "sexpsk" ~doc:"sexpsk tool" ~srcs ~requires
+let serialk_tool =
+  let srcs = Fpath.[`Dir (v "tool")] in
+  let requires = [cmdliner; serialkit] in
+  B0_ocaml.exe "serialkit" ~public:true ~doc:"serialkit tool" ~srcs ~requires
 
 (* Tests *)
 
 let test_spec =
   let srcs = Fpath.[`File (v "test/test.ml")] in
-  let requires = [] in
+  let requires = [serialkit] in
   B0_ocaml.exe "test" ~doc:"Tests" ~srcs ~requires
+
+let test_toml =
+  let srcs = Fpath.[`File (v "test/test_toml.ml")] in
+  let requires = [serialkit] in
+  B0_ocaml.exe "test-toml" ~doc:"TOML Tests" ~srcs ~requires
+
+(* Expectation tests *)
+
+let get_expect_exe exe = (* FIXME b0 *)
+  B0_expect.result_to_abort @@
+  let expect = Cmd.(arg "b0" % "--path" % "--" % exe) in
+  Result.map Cmd.arg (Os.Cmd.run_out ~trim:true expect)
+
+let expect_serialk_runs ctx =
+  let runs cmd = (* command, output suffix *)
+    [ Cmd.(arg cmd % "locs"), ".locs"; ]
+  in
+  let test_run ctx serialk file (cmd, ext) =
+    let cwd = B0_expect.base ctx and stdout = Fpath.(file -+ ext) in
+    B0_expect.stdout ctx ~cwd ~stdout Cmd.(serialk %% cmd)
+  in
+  let test_file ctx serialk file =
+    let cmd = String.subrange ~first:1 (Fpath.get_ext file) in
+    List.iter (test_run ctx serialk file) (runs cmd)
+  in
+  let serialk = get_expect_exe "serialkit" in
+  let test_files =
+    let base_files = B0_expect.base_files ctx ~rel:true ~recurse:false in
+    let input f = match Fpath.get_ext ~multi:true f with
+    | ".json" | ".sexp" | ".toml" | ".cbor" | ".xml" -> true
+    | _ -> false
+    in
+    List.filter input base_files
+  in
+  List.iter (test_file ctx serialk) test_files
+
+let expect =
+  B0_action.make "expect" ~doc:"Test expectations" @@
+  B0_expect.action_func ~base:(Fpath.v "test/expect") @@ fun ctx ->
+  expect_serialk_runs ctx;
+  ()
 
 (* Packs *)
 
 let default =
   let meta =
-    let open B0_meta in
-    empty
-    |> add authors ["The serialk programmers"]
-    |> add maintainers ["Daniel Bünzli <daniel.buenzl i@erratique.ch>"]
-    |> add homepage "https://erratique.ch/software/serialk"
-    |> add online_doc "https://erratique.ch/software/serialk/doc"
-    |> add licenses ["ISC"]
-    |> add repo "git+https://erratique.ch/repos/serialk.git"
-    |> add issues "https://github.com/dbuenzli/serialk/issues"
-    |> add description_tags
-      ["codec"; "json"; "codec"; "query"; "org:erratique"; ]
-    |> add B0_opam.Meta.build
+    B0_meta.empty
+    |> B0_meta.(add authors) ["The serialkit programmers"]
+    |> B0_meta.(add maintainers)
+       ["Daniel Bünzli <daniel.buenzl i@erratique.ch>"]
+    |> B0_meta.(add homepage) "https://erratique.ch/software/serialkit"
+    |> B0_meta.(add online_doc) "https://erratique.ch/software/serialkit/doc"
+    |> B0_meta.(add licenses) ["ISC"]
+    |> B0_meta.(add repo) "git+https://erratique.ch/repos/serialkit.git"
+    |> B0_meta.(add issues) "https://github.com/dbuenzli/serialkit/issues"
+    |> B0_meta.(add description_tags)
+      ["codec"; "json"; "sexp"; "toml"; "query"; "org:erratique"; ]
+    |> B0_meta.tag B0_opam.tag
+    |> B0_meta.add B0_opam.build
       {|[["ocaml" "pkg/pkg.ml" "build" "--dev-pkg" "%{dev}%"]]|}
-    |> tag B0_opam.tag
   in
-  B0_pack.v "default" ~doc:"serialk package" ~meta ~locked:true @@
+  B0_pack.make "default" ~doc:"serialkit package" ~meta ~locked:true @@
   B0_unit.list ()

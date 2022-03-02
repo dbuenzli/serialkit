@@ -1,5 +1,5 @@
 (*---------------------------------------------------------------------------
-   Copyright (c) 2019 The b0 programmers. All rights reserved.
+   Copyright (c) 2019 The serialkit programmers. All rights reserved.
    SPDX-License-Identifier: ISC
   ---------------------------------------------------------------------------*)
 
@@ -26,7 +26,7 @@
 
 (** {1:api API} *)
 
-open Serialk_text
+open Serialkit_text
 
 (** S-expression definitions and codec. *)
 module Sexp : sig
@@ -36,10 +36,10 @@ module Sexp : sig
   type 'a fmt = Format.formatter -> 'a -> unit
   (** The type for formatting functions. *)
 
-  type loc = Tloc.t
+  type loc = Textloc.t
   (** The type for source text locations. *)
 
-  val loc_nil : Tloc.t
+  val loc_nil : Textloc.t
   (** [loc_nil] is a source text location for non-parsed s-expressions. *)
 
   val pp_loc : loc fmt
@@ -138,7 +138,7 @@ module Sexp : sig
   (** [error_to_string r] converts an error to a string using [pp_error]
       (defaults to {!pp_error}). *)
 
-  val seq_of_string : ?file:Tloc.fpath -> string -> (t, error) result
+  val seq_of_string : ?file:Textloc.fpath -> string -> (t, error) result
   (** [seq_of_string ?file s] parses a {e sequence} of s-expressions from
       [s]. [file] is the file for locations, defaults to ["-"]. The
       sequence is returned as a fake s-expression list that spans from
@@ -154,7 +154,7 @@ module Sexp : sig
       encoded. *)
 
   val seq_of_string' :
-    ?pp_error:error fmt -> ?file:Tloc.fpath -> string -> (t, string) result
+    ?pp_error:error fmt -> ?file:Textloc.fpath -> string -> (t, string) result
   (** [seq_of_string'] s {!seq_of_string} composed with {!error_to_string}. *)
 
   val seq_to_string : t -> string

@@ -1,44 +1,10 @@
 (*---------------------------------------------------------------------------
-   Copyright (c) 2019 The serialk programmers. All rights reserved.
+   Copyright (c) 2019 The serialkit programmers. All rights reserved.
    SPDX-License-Identifier: ISC
   ---------------------------------------------------------------------------*)
 
-open Serialk_sexp
-
-module File = struct
-
-  (* Booooring *)
-
-  let catch_sys_error fn = try fn () with Sys_error e -> Error e
-
-  let with_io_chan close file chan fn =
-    try let r = fn chan in close chan; Ok r with
-    | e ->
-        (try ignore (close chan) with Sys_error _ -> ());
-        match e with
-        | Sys_error err -> Error (Printf.sprintf "%s: %s" file err)
-        | End_of_file ->
-            Error (Printf.sprintf "%s: unexpected end of file" file)
-        | e -> raise e
-
-  let with_open_in file fn =
-    catch_sys_error @@ fun () ->
-    let ic = if file = "-" then stdin else open_in_bin file in
-    let close_in ic = if file = "-" then () else close_in ic in
-    with_io_chan close_in file ic fn
-
-  let read file =
-    with_open_in file @@ fun ic ->
-    let bsize = 65536 (* IO_BUFFER_SIZE *) in
-    let buf = Buffer.create bsize in
-    let b = Bytes.create bsize in
-    let rec loop () =
-      let rc = input ic b 0 bsize in
-      if rc = 0 then Buffer.contents buf else
-      (Buffer.add_subbytes buf b 0 rc; loop ())
-    in
-    loop ()
-end
+open Std
+open Serialkit_sexp
 
 let err_file = 1
 let err_sexp = 2
@@ -53,13 +19,13 @@ let log_on_error ~exit:code r f = match r with
 
 let delete file path =
   let query = Sexpq.delete_at_path ~must_exist:false path in
-  log_on_error ~exit:err_file (File.read file) @@ fun content ->
+  log_on_error ~exit:err_file (Os.read_file file) @@ fun content ->
   log_on_error ~exit:err_sexp (Sexp.seq_of_string' ~file content) @@ fun sexp ->
   log_on_error ~exit:err_query (Sexpq.query' query sexp) @@ fun sexp ->
   Format.printf "@[%a@]" Sexp.pp_seq_layout sexp; 0
 
 let get file path =
-  log_on_error ~exit:err_file (File.read file) @@ fun content ->
+  log_on_error ~exit:err_file (Os.read_file file) @@ fun content ->
   log_on_error ~exit:err_sexp (Sexp.seq_of_string' ~file content) @@ fun sexp ->
   match path with
   | None -> Format.printf "@[%a@]" Sexp.pp_seq_layout sexp; 0
@@ -70,19 +36,21 @@ let get file path =
       | `L _ as l -> Format.printf "@[%a@]@." Sexp.pp l; 0
 
 let locs file =
-  let pp_loc ppf l = Serialk_text.Tloc.pp ppf l; Format.pp_print_char ppf ':' in
+  let pp_loc ppf l =
+    Serialkit_text.Textloc.pp ppf l; Format.pp_print_char ppf ':'
+  in
   let rec pp_locs ppf = function
   | `A (_, _) as s -> pp_loc ppf (Sexp.loc s)
   | `L (vs, _) as s ->
       pp_loc ppf (Sexp.loc s); Format.pp_print_cut ppf ();
       Format.pp_print_list pp_locs ppf vs
   in
-  log_on_error ~exit:err_file (File.read file) @@ fun content ->
+  log_on_error ~exit:err_file (Os.read_file file) @@ fun content ->
   log_on_error ~exit:err_sexp (Sexp.seq_of_string' ~file content) @@ fun sexp ->
   Format.printf "@[<v>%a@]@." pp_locs sexp; 0
 
 let set file caret v =
-  log_on_error ~exit:err_file (File.read file) @@ fun content ->
+  log_on_error ~exit:err_file (Os.read_file file) @@ fun content ->
   log_on_error ~exit:err_sexp (Sexp.seq_of_string' ~file content) @@ fun sexp ->
   log_on_error ~exit:err_sexp (Sexp.seq_of_string' v) @@ fun v ->
   let query = Sexpq.splice_at_caret ~must_exist:false caret ~rep:v in
@@ -186,7 +154,7 @@ let locs_cmd =
   Cmd.v (Cmd.info "locs" ~doc ~sdocs ~exits ~man)
     Term.(const locs $ file_arg)
 
-let cmd =
+let v =
   let doc = "Process s-expressions" in
   let sdocs = Manpage.s_common_options in
   let man = [
@@ -198,8 +166,5 @@ let cmd =
         See $(i,%%PKG_HOMEPAGE%%) for contact information."; ]
   in
   Cmd.group
-    (Cmd.info "sexpsk" ~version:"%%VERSION%%" ~doc ~sdocs ~exits ~man)
+    (Cmd.info "sexp" ~version:"%%VERSION%%" ~doc ~sdocs ~exits ~man)
     ~default:get_term [get_cmd; delete_cmd; locs_cmd; set_cmd;]
-
-let main () = exit (Cmd.eval' cmd)
-let () = if !Sys.interactive then () else main ()

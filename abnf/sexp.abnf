@@ -1,0 +1,28 @@
+;; This document describes the s-expression syntax parsed by
+;; serialk using the ABNF format of RFC 5234.
+;;
+;; A few constraints are not expressed by this grammar:
+;;
+;; 1. `unum` once interpreted as an hexadecimal number must
+;;    be a Unicode scalar value
+;; 2. A `comment can` be ended by the end of input
+;;
+
+ sexp-seq = *(ws / comment / sexp)
+     sexp = atom / list
+     list = %x0028 sexp-seq %x0029
+     atom = token / qtoken
+    token = t-char *(t-char)
+   qtoken = %x0022 *(q-char / escape / cont) %x0022
+   escape = %x005E (%x0020 / %x0022 / %x005E / %x006E / %x0072 /
+                    %x0075 %x007B unum %x007D)
+     unum = 1*6(HEXDIG)
+     cont = %x005E nl ws
+       ws = *(ws-char)
+  comment = %x003B *(c-char) nl
+       nl = %x000A / %x000D / %x000D %x000A
+   t-char = %x0021 / %x0023-0027 / %x002A-%x003A / %x003C-%x005D /
+            %x005F-%x007E / %x0080-D7FF / %xE000-10FFFF
+   q-char = t-char / ws-char / %x0028 / %x0029 / %x003B
+  ws-char = %x0020 / %x0009 / %x000A / %x000B / %x000C / %x000D
+   c-char = %x0009 / %x000B / %x000C / %x0020-D7FF / %xE000-10FFFF

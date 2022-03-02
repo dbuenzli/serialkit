@@ -1,5 +1,5 @@
 (*---------------------------------------------------------------------------
-   Copyright (c) 2016 The b0 programmers. All rights reserved.
+   Copyright (c) 2016 The serialkit programmers. All rights reserved.
    SPDX-License-Identifier: ISC
   ---------------------------------------------------------------------------*)
 
@@ -9,14 +9,14 @@
 
     Open this module to use it, this only introduces modules in your scope. *)
 
-open Serialk_text
+open Serialkit_text
 
 (** JSON text definitions and codec. *)
 module Json : sig
 
   (** {1:json JSON text} *)
 
-  type loc = Tloc.t
+  type loc = Textloc.t
   (** The type for text locations. *)
 
   val loc_nil : loc
@@ -126,7 +126,7 @@ module Json : sig
 
   (** {1:codec Codec} *)
 
-  val of_string : ?file:Tloc.fpath -> string -> (t, string) result
+  val of_string : ?file:Textloc.fpath -> string -> (t, string) result
   (** [of_string s] parses JSON text from [s] according to
       {{:https://tools.ietf.org/html/rfc8259}RFC8259} with the following
       limitations:

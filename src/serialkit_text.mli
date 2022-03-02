@@ -1,17 +1,32 @@
 (*---------------------------------------------------------------------------
-   Copyright (c) 2019 The b0 programmers. All rights reserved.
+   Copyright (c) 2019 The serialkit programmers. All rights reserved.
    SPDX-License-Identifier: ISC
   ---------------------------------------------------------------------------*)
 
-(** UTF-8 text lexing tools.
+(** UTF-8 text based formats tools.
 
     Open this module to use it defines only module in your scope. *)
 
+(**/**)
+module Dict : sig
+  type 'a key
+  val key : unit -> 'a key
+  type t
+  val empty : t
+  val mem : 'a key -> t -> bool
+  val add : 'a key -> 'a -> t -> t
+  val tag : unit key -> t -> t
+  val remove : 'a key -> t -> t
+  val find : 'a key -> t -> 'a option
+end
+(**/**)
+
 (** Text locations.
 
-    A data structure to represent the byte and line positions of ranges
-    of text in the UTF-8 text of a file. *)
-module Tloc : sig
+    A text location identifies a text span in a given UTF-8 encoded file
+    by an inclusive range of absolute {{!Textloc.type-byte_pos}byte} positions
+    and the {{!Textloc.type-line_pos}line positions} on which those occur. *)
+module Textloc : sig
 
   (** {1:fpath File paths} *)
 
@@ -25,33 +40,40 @@ module Tloc : sig
 
   (** {2:byte_pos Byte positions} *)
 
-  type pos = int
+  type byte_pos = int
   (** The type for zero-based, absolute, byte positions in text. If
       the text has [n] bytes, [0] is the first position and [n-1] is
       the last position. *)
 
-  val pos_none : int
-  (** [pos_none] is [-1]. A position to use when there is none. *)
+  val byte_pos_none : byte_pos
+  (** [byte_pos_none] is [-1]. A position to use when there is none. *)
 
   (** {2:lines Lines} *)
 
-  type line = int
+  type line_num = int
   (** The type for one-based, line numbers in the text. Lines
       increment after a {e newline} which is either a line feed ['\n']
-      (U+000A), a carriage return ['\r'] (U+000D) or a carriage return and a
-      line feed ["\r\n"] (<U+000D,U+000A>). *)
+      (U+000A), a carriage return ['\r'] (U+000D) or a carriage return
+      and a line feed ["\r\n"] (<U+000D,U+000A>). *)
 
-  val line_none : int
-  (** [line_none] is [-1]. A line number to use when there is none. *)
+  val line_num_none : line_num
+  (** [line_num_none] is [-1]. A line number to use when there is none. *)
 
   (** {2:line_pos Line positions} *)
 
-  type line_pos = line * pos
-  (** The type for line positions. The line number and the byte
-      position of the first element on the line. The later is the byte
-      position after the {{!line}newline}. If the text ends with a
-      newline that position is equal to the text's length, it is not a
-      valid byte {e index} of the input string. *)
+  type line_pos = line_num * byte_pos
+  (** The type for line positions. This identifies a line by its line
+      number and the absolute byte position following its newline
+      (or the start of text for the first line). That byte position:
+      {ul
+      {- Indexes the first byte of text of the line if the line is non-empty.}
+      {- Indexes the first byte of the next newline if the line is empty.}
+      {- Is out of bounds and equal to the text's length for a last empty
+         line (this includes when the text is empty).}} *)
+
+  val line_pos_first : line_pos
+  (** [line_pos_first] is [1, 0]. Note that this is the only line position
+      of the empty text. *)
 
   val line_pos_none : line_pos
   (** [line_pos_none] is [(line_none, pos_none)]. *)
@@ -59,20 +81,23 @@ module Tloc : sig
   (** {1:tloc Text locations} *)
 
   type t
-  (** The type for text locations. A text location is an inclusive range of
-      {{!byte_pos}byte positions} and the {{!line_pos}line positions} on which
-      they occur in the UTF-8 encoding of a given file.
+  (** The type for text locations. A text location identifies a text
+      span in an UTF-8 encoded file by an inclusive range of absolute
+      {{!type-byte_pos}byte positions} and the {{!type-line_pos}line positions}
+      on which they occur.
 
       If the first byte equals the last byte the range contains
       exactly that byte. If the first byte is greater than the last
-      byte this represents an insertion point before the first byte. *)
+      byte this represents an insertion point before the first byte. In
+      this case information about the last position should be ignored:
+      it can contain anything. *)
 
   val none : t
-  (** [none] is an position to use when there is none. *)
+  (** [none] is a position to use when there is none. *)
 
   val v :
-    file:fpath -> first_byte:pos -> last_byte:pos -> first_line:line_pos ->
-    last_line:line_pos -> t
+    file:fpath -> first_byte:byte_pos -> last_byte:byte_pos ->
+    first_line:line_pos -> last_line:line_pos -> t
   (** [v ~file ~first_byte ~last_byte ~first_line ~last_line] is a text
       location with the given arguments, see corresponding accessors for
       the semantics. If you don't have a file use {!file_none}. *)
@@ -80,13 +105,13 @@ module Tloc : sig
   val file : t -> fpath
   (** [file l] is [l]'s file. *)
 
-  val first_byte : t -> pos
+  val first_byte : t -> byte_pos
   (** [first_byte l] is [l]'s first byte. Irrelevant if {!is_none} is
       [true]. *)
 
-  val last_byte : t -> pos
+  val last_byte : t -> byte_pos
   (** [last_byte l] is [l]'s last byte. Irrelevant if {!is_none} or {!is_empty}
-      is [true].*)
+      is [true]. *)
 
   val first_line : t -> line_pos
   (** [first_line l] is the line position on which [first_byte l] lies.
@@ -116,13 +141,21 @@ module Tloc : sig
 
   (** {2:shrink_and_stretch Shrink and stretch} *)
 
+  val set_first : t -> first_byte:byte_pos -> first_line:line_pos -> t
+  (** [set_first l ~first_byte ~first_line] sets the the first position of
+      [l] to given values. *)
+
+  val set_last : t -> last_byte:byte_pos -> last_line:line_pos -> t
+  (** [set_last l ~last_byte ~last_line] sets the last position of [l]
+      to given values. *)
+
   val to_first : t -> t
   (** [to_first l] has both first and last positions set to [l]'s first
-      position. The range spans {!first_byte}. *)
+      position. The range spans {!first_byte}. See also {!before}. *)
 
   val to_last : t -> t
   (** [to_last l] has both first and last positions set to [l]'s last
-      position. The range spans {!last_byte}. *)
+      position. The range spans {!last_byte}. See also {!after}. *)
 
   val before : t -> t
   (** [before t] is the {{!is_empty}empty} text location starting at
@@ -146,10 +179,10 @@ module Tloc : sig
   (** {2:fmt Formatting} *)
 
   val pp_ocaml : Format.formatter -> t -> unit
-  (** [pp_ocaml] formats location like the OCaml compiler. *)
+  (** [pp_ocaml] formats text locations like the OCaml compiler. *)
 
   val pp_gnu : Format.formatter -> t -> unit
-  (** [pp_gnu] formats location according to the
+  (** [pp_gnu] formats text locations according to the
       {{:https://www.gnu.org/prep/standards/standards.html#Errors}GNU
       convention}. *)
 
@@ -158,84 +191,137 @@ module Tloc : sig
 
   val pp_dump : Format.formatter -> t -> unit
   (** [pp_dump] formats raw data for debugging. *)
+end
 
-  (** {1:text String substitutions and insertions}
+(** Text node metadata.
 
-      Strictly speaking this doesn't belong here but here you go. *)
+    Holds text locations and custom, client-defined metadata. *)
+module Meta : sig
 
-  val string_subrange : ?first:int -> ?last:int -> string -> string
-  (** [string_subrange ~first ~last s] are the consecutive bytes of [s]
-      whose indices exist in the range \[[first];[last]\].
+  type id = int
+  (** The type for non-negative metadata identifiers. *)
 
-      [first] defaults to [0] and last to [String.length s - 1].
+  type t
+  (** The type for abstract syntax tree node metadata. *)
 
-      Note that both [first] and [last] can be any integer. If
-      [first > last] the interval is empty and the empty string is
-      returned. *)
+  val none : t
+  (** [none] is metadata for when there is none, its {!textloc} is
+      {!Textloc.none}. *)
 
-  val string_replace : start:int -> stop:int -> rep:string -> string -> string
-  (** [string_replace ~start ~stop ~rep s] replaces the index range
-      \[[start];stop-1\] of [s] with [rep] as follows. If [start = stop]
-      the [rep] is inserted before [start]. [start] and [stop] must be
-      in range \[[0];[String.length s]\] and [start <= stop] or
-      [Invalid_argument] is raised. *)
+  val make : ?textloc:Textloc.t -> unit -> t
+  (** [make textloc] is metadata with text location [textloc] (defaults
+      to {!Textloc.none}) and a fresh identifier (see {!val-id}). *)
+
+  val id : t -> id
+  (** [id m] is an identifier for the metadata. Depending on how you
+      process the abstract syntax tree this may become non-unique but
+      the metadata values in an abstract syntax tree returned by
+      {!Doc.of_string} with [locs:true] have distinct identifiers. *)
+
+  val textloc : t -> Textloc.t
+  (** [textloc m] is the source location of the syntactic construct [m]
+      is attached to. *)
+
+  val with_textloc : keep_id:bool -> t -> Textloc.t -> t
+  (** [with_textloc ~keep_id m textloc] is metadata [m] with text location
+      [textloc] and a fresh id, unless [keep_id] is [true]. *)
+
+  (** {1:preds Predicates and comparisons} *)
+
+  val equal : t -> t -> bool
+  (** [equal m0 m1] is [true] if [m0] and [m1] have the same {!val-id}.
+      Note that they may have different {{!custom}metadata.} *)
+
+  val compare : t -> t -> int
+  (** [compare m0 m1] is a total order on metadata {!val-id}s compatible with
+      {!equal}. *)
+
+  val is_none : t -> bool
+  (** [is_none m] is [equal none m]. *)
+
+  (** {1:custom Custom metadata}
+
+      {b Warning.} Operating on custom metadata never changes
+      {!val-id}. It is possible for two meta values to have the same
+      id and different metadata. *)
+
+  type 'a key
+  (** The type for custom metadata keys. *)
+
+  val key : unit -> 'a key
+  (** [key ()] is a new metadata key. *)
+
+  val mem : 'a key -> t -> bool
+  (** [mem k m] is [true] iff [k] is bound in [m]. *)
+
+  val add : 'a key -> 'a -> t -> t
+  (** [add k v m] is [m] with key [k] bound to [v]. *)
+
+  val tag : unit key -> t -> t
+  (** [tag k m] is [add k () m]. *)
+
+  val remove : 'a key -> t -> t
+  (** [remove k m] is [m] with key [k] unbound in [v]. *)
+
+  val find : 'a key -> t -> 'a option
+  (** [find k m] the value of [k] in [m], if any. *)
 end
 
 (** UTF-8 text decoder.
 
-    A decoder inputs {e valid} UTF-8 text, maintains {{!Tloc}text locations}
-    according to advances in the input and has a {{!lex}lexeme buffer} for
-    lexing. *)
-module Tdec : sig
+    A decoder inputs {e valid} UTF-8 text, maintains {{!Textloc}text locations}
+    according to advances in the input and has a {{!Textdec.lex}lexeme buffer}
+    for lexing. *)
+module Textdec : sig
 
   (** {1:dec Decoder} *)
 
   type t
   (** The type for UTF-8 text decoders. *)
 
-  val from_string : ?file:Tloc.fpath -> string -> t
+  val from_string : ?file:Textloc.fpath -> string -> t
   (** [from_string ~file s] decodes [s] using [file] (defaults to
       {!Tloc.no_file}) for text location. *)
 
   (** {1:loc Locations} *)
 
-  val file : t -> Tloc.fpath
+  val file : t -> Textloc.fpath
   (** [file d] is the input file. *)
 
-  val pos : t -> Tloc.pos
+  val pos : t -> Textloc.byte_pos
   (** [pos d] is the current decoding byte position. *)
 
-  val line : t -> Tloc.line_pos
+  val line : t -> Textloc.line_pos
   (** [line d] is the current decoding line position. Lines increment as
       described {{!Tloc.line}here}. *)
 
   val loc :
-    t -> first_byte:Tloc.pos -> last_byte:Tloc.pos ->
-    first_line:Tloc.line_pos -> last_line:Tloc.line_pos -> Tloc.t
+    t -> first_byte:Textloc.byte_pos -> last_byte:Textloc.byte_pos ->
+    first_line:Textloc.line_pos -> last_line:Textloc.line_pos -> Textloc.t
   (** [loc d ~first_byte ~last_bytex ~first_line ~last_line] is
       {!Tloc.v} using [file d] for the file. *)
 
   val loc_to_here :
-    t -> first_byte:Tloc.pos -> first_line:Tloc.line_pos -> Tloc.t
+    t -> first_byte:Textloc.byte_pos -> first_line:Textloc.line_pos -> Textloc.t
   (** [loc_to_here d ~first_byte ~first_line] is a location that starts at
       [~first_byte] and [~first_line] and ends at the current decoding
       position as determined by {!pos} and {!line}. *)
 
-  val loc_here : t -> Tloc.t
+  val loc_here : t -> Textloc.t
   (** [loc_here d] is like {!loc_to_here} with the start position
       at the current decoding position as determined by
       {!pos} and {!line}. *)
 
   (** {1:err Errors} *)
 
-  exception Err of Tloc.t * string
+  exception Err of Textloc.t * string
   (** The exception for errors. A location and an english error message *)
 
-  val err : Tloc.t -> string -> 'b
+  val err : Textloc.t -> string -> 'b
   (** [err loc msg] raises [Err (loc, msg)] with no trace. *)
 
   val err_to_here :
-    t -> first_byte:Tloc.pos -> first_line:Tloc.line_pos ->
+    t -> first_byte:Textloc.byte_pos -> first_line:Textloc.line_pos ->
     ('a, Format.formatter, unit, 'b) format4 -> 'a
   (** [err_to_here d ~first_byte ~first_line fmt ...] is
       [err d (loc_to_here d ~first_byte ~first_line) fmt ...] *)
@@ -333,4 +419,25 @@ module Tdec : sig
   (** [lex_accept_byte d] is like {!accept_byte} but also adds the
       byte to the lexeme. {b Warning.} {!accept_byte}'s warning
       applies. *)
+
+  (** {1:text String substitutions and insertions}
+
+      Strictly speaking this doesn't belong here but here you go. *)
+
+  val string_subrange : ?first:int -> ?last:int -> string -> string
+  (** [string_subrange ~first ~last s] are the consecutive bytes of [s]
+      whose indices exist in the range \[[first];[last]\].
+
+      [first] defaults to [0] and last to [String.length s - 1].
+
+      Note that both [first] and [last] can be any integer. If
+      [first > last] the interval is empty and the empty string is
+      returned. *)
+
+  val string_replace : start:int -> stop:int -> rep:string -> string -> string
+  (** [string_replace ~start ~stop ~rep s] replaces the index range
+      \[[start];stop-1\] of [s] with [rep] as follows. If [start = stop]
+      the [rep] is inserted before [start]. [start] and [stop] must be
+      in range \[[0];[String.length s]\] and [start <= stop] or
+      [Invalid_argument] is raised. *)
 end

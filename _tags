@@ -2,4 +2,5 @@ true : bin_annot, safe_string
 <src> : include
 <test> : include
 <test/*> : package(cmdliner)
+<tool/*> : package(cmdliner)
 <_b0> : -traverse
