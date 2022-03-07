@@ -675,6 +675,15 @@ module Jsonq = struct
       in
       List.fold_left add_mem Sset.empty ms
   | j -> err_exp_obj p j
+
+  let fold_obj f mem q acc p = function
+  | `O (ms, l) ->
+      let f acc ((n, nl), j) = match mem n with
+      | Ok k -> f k (q ((`O n, l) :: p) j) acc
+      | Error e -> err ((`O n, l) :: p) nl e
+      in
+      List.fold_left f acc ms
+  | j -> err_exp_obj p j
 end
 
 (*---------------------------------------------------------------------------

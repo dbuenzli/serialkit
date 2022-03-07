@@ -398,6 +398,12 @@ module Jsonq : sig
   (** [mem_dom ~validate] queries the member domain of a JSON object.
       If [validate] is [Some dom], the query fails if a member name is not in
       [dom]. *)
+
+  val fold_obj :
+    ('m -> 'a -> 'b -> 'b) -> (string -> ('m, string) result) ->
+    'a t -> 'b -> 'b t
+  (** [fold_obj f m q acc] parses each member with [m], queries its
+      value with [q] and folds the result with [f] starting with [acc]. *)
 end
 
 (*---------------------------------------------------------------------------
