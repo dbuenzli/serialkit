@@ -110,15 +110,15 @@ let caret_arg =
   Arg.conv ~docv:"CARET" (parse, Sexp.pp_caret ())
 
 let exits =
-  Term.exit_info err_file ~doc:"on file read errors" ::
-  Term.exit_info err_sexp ~doc:"on s-expression parse errors" ::
-  Term.exit_info err_query ~doc:"on path query errors" ::
-  Term.default_exits
+  Cmd.Exit.info err_file ~doc:"on file read errors" ::
+  Cmd.Exit.info err_sexp ~doc:"on s-expression parse errors" ::
+  Cmd.Exit.info err_query ~doc:"on path query errors" ::
+  Cmd.Exit.defaults
 
 let common_man =
   [ `S Manpage.s_bugs;
-    `P "This program is distributed with the serialk OCaml library.
-     See $(i,%%PKG_HOMEPAGE%%) for contact information."; ]
+    `P "This program is distributed with the serialk OCaml library. \
+        See $(i,%%PKG_HOMEPAGE%%) for contact information."; ]
 
 let delete_cmd =
   let doc = "Delete an s-expression path" in
@@ -134,10 +134,10 @@ let delete_cmd =
     let doc = "Delete s-expression path $(docv)." in
     Arg.(required & pos 1 (some path_arg) None & info [] ~doc ~docv:"SPATH")
   in
-  Term.(const delete $ file_arg $ path_arg),
-  Term.info "delete" ~doc ~sdocs ~exits ~man
+  Cmd.v (Cmd.info "delete" ~doc ~sdocs ~exits ~man)
+    Term.(const delete $ file_arg $ path_arg)
 
-let get_cmd =
+let get_cmd, get_term =
   let doc = "Extract an s-expression path (default)" in
   let sdocs = Manpage.s_common_options in
   let man = [
@@ -151,8 +151,8 @@ let get_cmd =
     let doc = "Extract s-expression path $(docv)." in
     Arg.(value & pos 1 (some path_arg) None & info [] ~doc ~docv:"SPATH")
   in
-  Term.(const get $ file_arg $ key_opt_arg),
-  Term.info "get" ~doc ~sdocs ~exits ~man
+  let term = Term.(const get $ file_arg $ key_opt_arg) in
+  Cmd.v (Cmd.info "get" ~doc ~sdocs ~exits ~man) term, term
 
 let set_cmd =
   let doc = "Edit an s-expression path" in
@@ -172,8 +172,8 @@ let set_cmd =
     let doc = "$(docv) to insert or substitute" in
     Arg.(required & pos 2 (some string) None & info [] ~doc ~docv:"SEXP")
   in
-  Term.(const set $ file_arg $ caret_arg $ sexp),
-  Term.info "set" ~doc ~sdocs ~exits ~man
+  Cmd.v (Cmd.info "set" ~doc ~sdocs ~exits ~man)
+    Term.(const set $ file_arg $ caret_arg $ sexp)
 
 let locs_cmd =
   let doc = "Show s-expression parse locations" in
@@ -183,11 +183,10 @@ let locs_cmd =
     `P "$(tname) outputs s-expression parse locations.";
     `Blocks common_man; ]
   in
-  Term.(const locs $ file_arg),
-  Term.info "locs" ~doc ~sdocs ~exits ~man
+  Cmd.v (Cmd.info "locs" ~doc ~sdocs ~exits ~man)
+    Term.(const locs $ file_arg)
 
-let cmds = [get_cmd; delete_cmd; locs_cmd; set_cmd;]
-let default =
+let cmd =
   let doc = "Process s-expressions" in
   let sdocs = Manpage.s_common_options in
   let man = [
@@ -198,12 +197,12 @@ let default =
     `P "This program is distributed with the serialk OCaml library.
         See $(i,%%PKG_HOMEPAGE%%) for contact information."; ]
   in
-  fst (List.hd cmds),
-  Term.info "sexpsk" ~version:"%%VERSION%%" ~doc ~sdocs ~exits ~man
+  Cmd.group
+    (Cmd.info "sexpsk" ~version:"%%VERSION%%" ~doc ~sdocs ~exits ~man)
+    ~default:get_term [get_cmd; delete_cmd; locs_cmd; set_cmd;]
 
-let () =
-  if !Sys.interactive then () else
-  Term.(exit_status @@ eval_choice default cmds)
+let main () = exit (Cmd.eval' cmd)
+let () = if !Sys.interactive then () else main ()
 
 (*---------------------------------------------------------------------------
    Copyright (c) 2019 The serialk programmers
