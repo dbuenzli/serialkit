@@ -133,10 +133,12 @@ module Tloc = struct
 
   (* Shrink and stretch *)
 
+  [@@@warning "-6"]
   let to_first l = v l.file l.first_byte l.first_byte l.first_line l.first_line
   let to_last l = v l.file l.last_byte l.last_byte l.last_line l.last_line
   let before l = v l.file l.first_byte pos_none l.first_line line_pos_none
   let after l = v l.file (l.first_byte + 1) pos_none l.last_line line_pos_none
+  [@@@warning "+6"]
 
   let span l0 l1 =
     let first_byte, first_line =
@@ -151,8 +153,10 @@ module Tloc = struct
     in
     v ~file ~first_byte ~first_line ~last_byte ~last_line
 
+  [@@@warning "-6"]
   let reloc ~first ~last =
     v last.file first.first_byte last.last_byte first.first_line last.last_line
+  [@@@warning "+6"]
 
   (* Formatters *)
 
