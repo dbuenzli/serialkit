@@ -194,7 +194,7 @@ let cmd =
     `P "$(mname) edits s-expression files";
     `S Manpage.s_examples;
     `S Manpage.s_bugs;
-    `P "This program is distributed with the serialk OCaml library.
+    `P "This program is distributed with the serialk OCaml library. \
         See $(i,%%PKG_HOMEPAGE%%) for contact information."; ]
   in
   Cmd.group
