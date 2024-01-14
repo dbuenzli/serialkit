@@ -1,21 +1,28 @@
 opam-version: "2.0"
-name: "serialk"
-synopsis: "Satisfies OCaml serialization impulsions"
+name: "serialkit"
+synopsis: "Serialization formats toolkit for OCaml"
 description: """\
-Serialk provides easy to use OCaml APIs to query, edit and
-(de)serialize data serialization formats. JSON text, s-expressions and
-TOML are supported for now.
+Serialkit provides easy to use OCaml APIs to query, update and
+generate data in generic serialization data formats.
 
-serialk is distributed under the ISC license and has no dependencies.
+The supported data formats are JSON text, s-expressions and TOML.
 
-Homepage: https://erratique.ch/software/serialk"""
+Serialkit is distributed under the ISC license. It has no dependencies.
+
+Homepage: <https://erratique.ch/software/serialkit>"""
 maintainer: "Daniel Bünzli <daniel.buenzl i@erratique.ch>"
 authors: "The serialkit programmers"
 license: "ISC"
 tags: ["codec" "json" "sexp" "toml" "query" "org:erratique"]
-homepage: "https://erratique.ch/software/serialk"
-doc: "https://erratique.ch/software/serialk/doc"
-bug-reports: "https://github.com/dbuenzli/serialk/issues"
-depends: ["serialk" "cmdliner"]
+homepage: "https://erratique.ch/software/serialkit"
+doc: "https://erratique.ch/software/serialkit/doc"
+bug-reports: "https://github.com/dbuenzli/serialkit/issues"
+depends: [
+  "ocaml" {>= "4.14.0"}
+  "ocamlfind" {build}
+  "ocamlbuild" {build}
+  "topkg" {build & >= "1.0.3"}
+  "cmdliner" {>= "1.1.0"}
+]
 build: ["ocaml" "pkg/pkg.ml" "build" "--dev-pkg" "%{dev}%"]
-dev-repo: "git+https://erratique.ch/repos/serialk.git"
+dev-repo: "git+https://erratique.ch/repos/serialkit.git"

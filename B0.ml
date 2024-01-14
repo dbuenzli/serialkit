@@ -15,7 +15,7 @@ let serialkit_lib =
 
 (* Tools *)
 
-let serialk_tool =
+let serialkit_tool =
   let srcs = Fpath.[`Dir (v "tool")] in
   let requires = [cmdliner; serialkit] in
   B0_ocaml.exe "serialkit" ~public:true ~doc:"serialkit tool" ~srcs ~requires
@@ -34,11 +34,6 @@ let test_toml =
 
 (* Expectation tests *)
 
-let get_expect_exe exe = (* FIXME b0 *)
-  B0_expect.result_to_abort @@
-  let expect = Cmd.(arg "b0" % "--path" % "--" % exe) in
-  Result.map Cmd.arg (Os.Cmd.run_out ~trim:true expect)
-
 let expect_serialk_runs ctx =
   let runs cmd = (* command, output suffix *)
     [ Cmd.(arg cmd % "locs"), ".locs"; ]
@@ -51,7 +46,7 @@ let expect_serialk_runs ctx =
     let cmd = String.subrange ~first:1 (Fpath.get_ext file) in
     List.iter (test_run ctx serialk file) (runs cmd)
   in
-  let serialk = get_expect_exe "serialkit" in
+  let serialk = B0_expect.get_unit_exe_file_cmd ctx serialkit_tool in
   let test_files =
     let base_files = B0_expect.base_files ctx ~rel:true ~recurse:false in
     let input f = match Fpath.get_ext ~multi:true f with
@@ -63,7 +58,7 @@ let expect_serialk_runs ctx =
   List.iter (test_file ctx serialk) test_files
 
 let expect =
-  B0_action.make "expect" ~doc:"Test expectations" @@
+  B0_action.make "expect" ~units:[serialkit_tool] ~doc:"Test expectations" @@
   B0_expect.action_func ~base:(Fpath.v "test/expect") @@ fun ctx ->
   expect_serialk_runs ctx;
   ()
@@ -73,19 +68,25 @@ let expect =
 let default =
   let meta =
     B0_meta.empty
-    |> B0_meta.(add authors) ["The serialkit programmers"]
-    |> B0_meta.(add maintainers)
-       ["Daniel Bünzli <daniel.buenzl i@erratique.ch>"]
-    |> B0_meta.(add homepage) "https://erratique.ch/software/serialkit"
-    |> B0_meta.(add online_doc) "https://erratique.ch/software/serialkit/doc"
-    |> B0_meta.(add licenses) ["ISC"]
-    |> B0_meta.(add repo) "git+https://erratique.ch/repos/serialkit.git"
-    |> B0_meta.(add issues) "https://github.com/dbuenzli/serialkit/issues"
-    |> B0_meta.(add description_tags)
+    |> ~~ B0_meta.authors ["The serialkit programmers"]
+    |> ~~ B0_meta.maintainers ["Daniel Bünzli <daniel.buenzl i@erratique.ch>"]
+    |> ~~ B0_meta.homepage "https://erratique.ch/software/serialkit"
+    |> ~~ B0_meta.online_doc "https://erratique.ch/software/serialkit/doc"
+    |> ~~ B0_meta.licenses ["ISC"]
+    |> ~~ B0_meta.repo "git+https://erratique.ch/repos/serialkit.git"
+    |> ~~ B0_meta.issues "https://github.com/dbuenzli/serialkit/issues"
+    |> ~~ B0_meta.description_tags
       ["codec"; "json"; "sexp"; "toml"; "query"; "org:erratique"; ]
-    |> B0_meta.tag B0_opam.tag
-    |> B0_meta.add B0_opam.build
+    |> ~~ B0_opam.build
       {|[["ocaml" "pkg/pkg.ml" "build" "--dev-pkg" "%{dev}%"]]|}
+    |> ~~ B0_opam.depends [
+      "ocaml", {|>= "4.14.0"|};
+      "ocamlfind", {|build|};
+      "ocamlbuild", {|build|};
+      "topkg", {|build & >= "1.0.3"|};
+      "cmdliner", {|>= "1.1.0"|}]
+    |> B0_meta.tag B0_release.tag
+    |> B0_meta.tag B0_opam.tag
   in
   B0_pack.make "default" ~doc:"serialkit package" ~meta ~locked:true @@
   B0_unit.list ()
