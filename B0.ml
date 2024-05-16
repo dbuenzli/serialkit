@@ -58,7 +58,8 @@ let expect_serialk_runs ctx =
   List.iter (test_file ctx serialk) test_files
 
 let expect =
-  B0_action.make "expect" ~units:[serialkit_tool] ~doc:"Test expectations" @@
+  B0_unit.of_action'
+    "expect" ~units:[serialkit_tool] ~doc:"Test expectations" @@
   B0_expect.action_func ~base:(Fpath.v "test/expect") @@ fun ctx ->
   expect_serialk_runs ctx;
   ()
