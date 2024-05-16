@@ -43,7 +43,7 @@ let expect_serialk_runs ctx =
     B0_expect.stdout ctx ~cwd ~stdout Cmd.(serialk %% cmd)
   in
   let test_file ctx serialk file =
-    let cmd = String.subrange ~first:1 (Fpath.get_ext file) in
+    let cmd = String.subrange ~first:1 (Fpath.get_ext ~multi:false file) in
     List.iter (test_run ctx serialk file) (runs cmd)
   in
   let serialk = B0_expect.get_unit_exe_file_cmd ctx serialkit_tool in
@@ -58,7 +58,8 @@ let expect_serialk_runs ctx =
   List.iter (test_file ctx serialk) test_files
 
 let expect =
-  B0_action.make "expect" ~units:[serialkit_tool] ~doc:"Test expectations" @@
+  B0_unit.of_action'
+    "expect" ~units:[serialkit_tool] ~doc:"Test expectations" @@
   B0_expect.action_func ~base:(Fpath.v "test/expect") @@ fun ctx ->
   expect_serialk_runs ctx;
   ()
