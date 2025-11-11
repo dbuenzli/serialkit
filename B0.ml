@@ -43,13 +43,13 @@ let expect_serialk_runs ctx =
     B0_expect.stdout ctx ~cwd ~stdout Cmd.(serialk %% cmd)
   in
   let test_file ctx serialk file =
-    let cmd = String.subrange ~first:1 (Fpath.get_ext ~multi:false file) in
+    let cmd = String.subrange ~first:1 (Fpath.take_ext ~multi:false file) in
     List.iter (test_run ctx serialk file) (runs cmd)
   in
   let serialk = B0_expect.get_unit_exe_file_cmd ctx serialkit_tool in
   let test_files =
     let base_files = B0_expect.base_files ctx ~rel:true ~recurse:false in
-    let input f = match Fpath.get_ext ~multi:true f with
+    let input f = match Fpath.take_ext ~multi:true f with
     | ".json" | ".sexp" | ".toml" | ".cbor" | ".xml" -> true
     | _ -> false
     in
